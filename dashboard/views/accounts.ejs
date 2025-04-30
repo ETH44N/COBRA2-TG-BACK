@@ -1,0 +1,426 @@
+<div class="container-fluid py-4">
+  <!-- Page Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+      <i class="bi bi-person-fill me-2 text-primary"></i>
+      Telegram Accounts
+    </h2>
+    <div>
+      <button type="button" class="btn btn-outline-primary me-2" id="refreshAccountsBtn">
+        <i class="bi bi-arrow-repeat me-1"></i> Refresh
+      </button>
+      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+        <i class="bi bi-plus-lg me-1"></i> Add Account
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-primary shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-primary text-uppercase mb-1">Total Accounts</div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= accounts.length %></div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-people fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-success shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-success text-uppercase mb-1">Active Accounts</div>
+              <div class="h5 mb-0 fw-bold text-gray-800">
+                <%= accounts.filter(account => account.status === 'active').length %>
+              </div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-check-circle fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-info shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-info text-uppercase mb-1">Monitored Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800">
+                <%= 
+                  accounts.reduce((total, account) => {
+                    return total + (account.channelCount || 0);
+                  }, 0)
+                %>
+              </div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-diagram-3 fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-warning shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-warning text-uppercase mb-1">Inactive Accounts</div>
+              <div class="h5 mb-0 fw-bold text-gray-800">
+                <%= accounts.filter(account => account.status !== 'active').length %>
+              </div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+      <h6 class="m-0 font-weight-bold text-primary">Manage Accounts</h6>
+      <div class="input-group" style="max-width: 300px;">
+        <input type="text" class="form-control" placeholder="Search accounts..." id="accountSearch">
+        <button class="btn btn-outline-secondary" type="button" id="clearSearch">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover" id="accountsTable" width="100%" cellspacing="0">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Status</th>
+              <th>Channels</th>
+              <th>Last Login</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (accounts && accounts.length > 0) { %>
+              <% accounts.forEach(account => { %>
+                <tr data-id="<%= account._id %>">
+                  <td>
+                    <div class="d-flex align-items-center">
+                      <div class="account-icon me-2">
+                        <% if (account.photoUrl) { %>
+                          <img src="<%= account.photoUrl %>" alt="Account photo" width="32" height="32" class="rounded-circle">
+                        <% } else { %>
+                          <div class="avatar-placeholder bg-primary text-white rounded-circle">
+                            <%= account.firstName ? account.firstName.charAt(0).toUpperCase() : 'A' %>
+                          </div>
+                        <% } %>
+                      </div>
+                      <div>
+                        <div class="fw-bold">
+                          <%= account.firstName || '' %> <%= account.lastName || '' %>
+                          <% if (!account.firstName && !account.lastName) { %>
+                            Unnamed Account
+                          <% } %>
+                        </div>
+                        <div class="small text-muted">
+                          <%= account.phone || account.username || 'No contact info' %>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="badge <%= account.status === 'active' ? 'bg-success' : 'bg-warning' %>">
+                      <%= account.status === 'active' ? 'Active' : 'Inactive' %>
+                    </span>
+                  </td>
+                  <td>
+                    <% if (account.channelCount && account.channelCount > 0) { %>
+                      <a href="/channels?accountId=<%= account._id %>"><%= account.channelCount %> channels</a>
+                    <% } else { %>
+                      <span class="text-muted">0 channels</span>
+                    <% } %>
+                  </td>
+                  <td>
+                    <% if (account.lastLoginDate) { %>
+                      <%= new Date(account.lastLoginDate).toLocaleString() %>
+                    <% } else { %>
+                      Never
+                    <% } %>
+                  </td>
+                  <td>
+                    <div class="btn-group" role="group">
+                      <a href="/accounts/<%= account._id %>" class="btn btn-sm btn-info">
+                        <i class="bi bi-eye"></i>
+                      </a>
+                      <button type="button" class="btn btn-sm btn-primary edit-account" 
+                        data-bs-toggle="modal" data-bs-target="#editAccountModal" 
+                        data-id="<%= account._id %>"
+                        data-phone="<%= account.phone %>"
+                        data-username="<%= account.username %>"
+                        data-firstname="<%= account.firstName %>"
+                        data-lastname="<%= account.lastName %>"
+                        data-status="<%= account.status %>">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button type="button" class="btn btn-sm btn-danger delete-account" 
+                        data-bs-toggle="modal" data-bs-target="#deleteAccountModal" 
+                        data-id="<%= account._id %>"
+                        data-phone="<%= account.phone %>">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="5" class="text-center py-4">
+                  <div class="d-flex flex-column align-items-center">
+                    <i class="bi bi-people mb-3" style="font-size: 3rem;"></i>
+                    <h5>No accounts found</h5>
+                    <p class="text-muted">Add new accounts to start monitoring</p>
+                    <button type="button" class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+                      <i class="bi bi-plus-lg me-1"></i> Add Account
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Account Modal -->
+<div class="modal fade" id="addAccountModal" tabindex="-1" aria-labelledby="addAccountModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addAccountModalLabel">Add New Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addAccountForm" action="/accounts" method="POST">
+          <div class="mb-3">
+            <label for="phoneNumber" class="form-label">Phone Number</label>
+            <div class="input-group">
+              <span class="input-group-text">+</span>
+              <input type="text" class="form-control" id="phoneNumber" name="phone" required placeholder="1234567890">
+            </div>
+            <div class="form-text">Enter the phone number with country code but without the + sign</div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="username" class="form-label">Username (optional)</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" class="form-control" id="username" name="username" placeholder="username">
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="firstName" class="form-label">First Name</label>
+              <input type="text" class="form-control" id="firstName" name="firstName">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="lastName" class="form-label">Last Name</label>
+              <input type="text" class="form-control" id="lastName" name="lastName">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="accountActive" name="active" checked>
+              <label class="form-check-label" for="accountActive">Active</label>
+            </div>
+          </div>
+          
+          <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            You will need to verify this account with a code sent to the phone number.
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="addAccountForm" class="btn btn-primary">Add Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Account Modal -->
+<div class="modal fade" id="editAccountModal" tabindex="-1" aria-labelledby="editAccountModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editAccountModalLabel">Edit Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="editAccountForm" action="/accounts" method="POST">
+          <input type="hidden" id="editAccountId" name="id">
+          <input type="hidden" name="_method" value="PUT">
+          
+          <div class="mb-3">
+            <label for="editPhoneNumber" class="form-label">Phone Number</label>
+            <div class="input-group">
+              <span class="input-group-text">+</span>
+              <input type="text" class="form-control" id="editPhoneNumber" name="phone" required>
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="editUsername" class="form-label">Username</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" class="form-control" id="editUsername" name="username">
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="editFirstName" class="form-label">First Name</label>
+              <input type="text" class="form-control" id="editFirstName" name="firstName">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="editLastName" class="form-label">Last Name</label>
+              <input type="text" class="form-control" id="editLastName" name="lastName">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="editAccountActive" name="active">
+              <label class="form-check-label" for="editAccountActive">Active</label>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="editAccountForm" class="btn btn-primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Account Modal -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteAccountModalLabel">Delete Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="deleteAccountForm" action="/accounts" method="POST">
+          <input type="hidden" id="deleteAccountId" name="id">
+          <input type="hidden" name="_method" value="DELETE">
+          
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Are you sure you want to delete account <strong id="deleteAccountPhone"></strong>?
+            This action cannot be undone and will remove all associated data.
+          </div>
+          
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="confirmLogout" name="logout" checked>
+            <label class="form-check-label" for="confirmLogout">
+              Logout from Telegram before deleting
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="deleteAccountForm" class="btn btn-danger">Delete Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Account search functionality
+    const searchInput = document.getElementById('accountSearch');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    const tableRows = document.querySelectorAll('#accountsTable tbody tr');
+    
+    searchInput.addEventListener('keyup', function() {
+      const searchTerm = this.value.toLowerCase();
+      tableRows.forEach(row => {
+        const accountName = row.querySelector('td:first-child .fw-bold').textContent.toLowerCase();
+        const accountContact = row.querySelector('td:first-child .small').textContent.toLowerCase();
+        
+        if (accountName.includes(searchTerm) || accountContact.includes(searchTerm)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+    
+    clearSearchBtn.addEventListener('click', function() {
+      searchInput.value = '';
+      tableRows.forEach(row => {
+        row.style.display = '';
+      });
+    });
+    
+    // Handle edit account modal
+    const editButtons = document.querySelectorAll('.edit-account');
+    editButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const phone = this.getAttribute('data-phone');
+        const username = this.getAttribute('data-username');
+        const firstName = this.getAttribute('data-firstname');
+        const lastName = this.getAttribute('data-lastname');
+        const status = this.getAttribute('data-status');
+        
+        document.getElementById('editAccountId').value = id;
+        document.getElementById('editPhoneNumber').value = phone ? phone.replace('+', '') : '';
+        document.getElementById('editUsername').value = username ? username.replace('@', '') : '';
+        document.getElementById('editFirstName').value = firstName || '';
+        document.getElementById('editLastName').value = lastName || '';
+        document.getElementById('editAccountActive').checked = status === 'active';
+      });
+    });
+    
+    // Handle delete account modal
+    const deleteButtons = document.querySelectorAll('.delete-account');
+    deleteButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const phone = this.getAttribute('data-phone');
+        
+        document.getElementById('deleteAccountId').value = id;
+        document.getElementById('deleteAccountPhone').textContent = phone || 'this account';
+      });
+    });
+    
+    // Refresh button
+    document.getElementById('refreshAccountsBtn').addEventListener('click', function() {
+      window.location.reload();
+    });
+  });
+</script> 

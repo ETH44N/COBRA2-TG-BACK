@@ -1,0 +1,681 @@
+{
+  "timestamp": "2025-04-23T00:14:58.470Z",
+  "summary": {
+    "total": 106,
+    "successful": 70,
+    "failed": 36,
+    "alreadyExists": 0
+  },
+  "accounts": [
+    {
+      "phone_number": "+27677950941",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+19832057332",
+      "username": "Cobra",
+      "status": "success",
+      "account_id": "f12911c4-293a-43a6-b7ef-261793d02f55",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967771174773",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967771740943",
+      "status": "failed",
+      "message": "406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)"
+    },
+    {
+      "phone_number": "+967779542821",
+      "username": "محمد",
+      "status": "success",
+      "account_id": "239706b0-7925-4b72-a568-5c1f8f19ced5",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967779588780",
+      "username": "..",
+      "status": "success",
+      "account_id": "8b5804a6-9a07-47a5-b2b9-17fa1d7cc4e9",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780131480",
+      "username": "سلطان المحبه",
+      "status": "success",
+      "account_id": "ae1b07fd-5e1e-4b3c-ad8d-640236f0ce53",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780151263",
+      "username": "nas",
+      "status": "success",
+      "account_id": "27b6319c-e09a-4edc-bcf6-109381555d4f",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780719829",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967780723085",
+      "username": "Ais",
+      "status": "success",
+      "account_id": "03dd3a04-b4d6-4906-85e3-8ebee30b3b2c",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782542082",
+      "username": "بشار",
+      "status": "success",
+      "account_id": "0eaf9d74-4cb1-4cf2-b2fd-abb90ec1a3d1",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782705604",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967782719373",
+      "username": "بهاء القادري",
+      "status": "success",
+      "account_id": "342b1e44-3853-4a52-81ae-fcc0a5304e9c",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989332330603",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989935036296",
+      "username": "Mohmmad_121",
+      "status": "success",
+      "account_id": "0d5cc5d9-155d-4e3b-b19a-b7348003a17f",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989057992263",
+      "username": "mobl_naharkhori_khodayi",
+      "status": "success",
+      "account_id": "be9ca2b3-af83-46e2-808f-832e4f55e1da",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989367046055",
+      "username": "2021",
+      "status": "success",
+      "account_id": "f10b0728-24b6-47ce-bf6d-251fd4eadcfa",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "16817792737",
+      "username": "5032665944",
+      "status": "success",
+      "account_id": "537b0864-754d-4abc-ab84-673c1975fac7",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "93771286300",
+      "username": "Zafar Afghan 2021",
+      "status": "success",
+      "account_id": "0c5f3553-0aab-4863-9127-2530812e196b",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "14743532722",
+      "username": "MEHDI_8013",
+      "status": "success",
+      "account_id": "31b0f05d-26db-499b-8dac-4c9e097973ab",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "18059120496",
+      "username": "Ramin 2022",
+      "status": "success",
+      "account_id": "e670d476-aff3-4bae-bfac-412c40ba1911",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989370029961",
+      "username": "2020",
+      "status": "success",
+      "account_id": "8ff0198f-9c81-4271-a7cf-359d51066e50",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "970592885331",
+      "username": "ID-1057270778",
+      "status": "success",
+      "account_id": "5658370d-2048-424b-8754-d4b37ce94ea2",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "18458863574",
+      "username": "۲۲",
+      "status": "success",
+      "account_id": "8f19c830-8f0c-4045-9443-1f3e9df25324",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "50371989772",
+      "username": "2022",
+      "status": "success",
+      "account_id": "aa3cacd5-34cd-40a2-b984-725d86b39f03",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "18458862284",
+      "username": "🌹",
+      "status": "success",
+      "account_id": "b83c9744-7f3b-4251-8cd2-ab288d8816a3",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "639453495816",
+      "username": "Viah",
+      "status": "success",
+      "account_id": "d70b8158-9913-4be7-99f3-2b32569bce72",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989900594859",
+      "username": "22",
+      "status": "success",
+      "account_id": "0bce46ac-6872-485a-ac58-cb9050cff73f",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "639453263128",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "639151672607",
+      "username": "zijei24",
+      "status": "success",
+      "account_id": "e73ff3e5-9a0e-4d7b-88d3-8edda33c2c2d",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "50663646141",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "50661203004",
+      "username": "Noblan",
+      "status": "success",
+      "account_id": "0a255e80-a233-451f-9d07-072fbc39e140",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+27647812397",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+27631721168",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967771174668",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+15343563352",
+      "username": "freetravel0",
+      "status": "success",
+      "account_id": "2711287e-f538-4126-804c-223196568cde",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+33756986183",
+      "username": "cob00000000",
+      "status": "success",
+      "account_id": "afed1ca2-2667-4c2c-b2ea-e7748a876bf3",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967771667417",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967771696732",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967771808525",
+      "status": "failed",
+      "message": "406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)"
+    },
+    {
+      "phone_number": "+967771872584",
+      "username": "سامي",
+      "status": "success",
+      "account_id": "95de0bf9-c5ea-4a8b-958a-c3d1dd7d427b",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967779590255",
+      "username": "A78080",
+      "status": "success",
+      "account_id": "9f4d12e9-3c52-4068-8ce7-f33a50e80184",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967779655307",
+      "username": "B",
+      "status": "success",
+      "account_id": "ef6603bf-6352-4d92-abb9-d337f824f822",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780516759",
+      "username": "Mohammed",
+      "status": "success",
+      "account_id": "caed3973-8ad4-42b0-9383-4868ae84f152",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780619147",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967780873397",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967782578855",
+      "username": "خالد",
+      "status": "success",
+      "account_id": "28dab1dc-a12d-4e65-9f09-8ad17f99508d",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782846315",
+      "username": "أبوعكاشة",
+      "status": "success",
+      "account_id": "cd1c9be5-708e-4de5-8021-0970e0d22e49",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782878928",
+      "username": "Besothont",
+      "status": "success",
+      "account_id": "c32a63bc-795c-47f4-9c68-546927d84638",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967783024200",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967783147465",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989309291587",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989385310231",
+      "username": "۲۰۲۰حسن قربانی",
+      "status": "success",
+      "account_id": "dc850b7c-ad50-46c2-b062-03e89ff060de",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "93747952224",
+      "username": "Puppmfef",
+      "status": "success",
+      "account_id": "a2138bde-c999-4b12-a0c9-026b6c53a8dd",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "14284049426",
+      "username": "capcal",
+      "status": "success",
+      "account_id": "b63d68bd-b8bb-448e-b26d-6e44e1011689",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "16282923744",
+      "username": "2022",
+      "status": "success",
+      "account_id": "3c1f337c-46d3-433d-aaa7-27bbd24bad78",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "50660288529",
+      "username": "fran",
+      "status": "success",
+      "account_id": "d4c0c142-3264-4a90-b669-1928a958a023",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967771599086",
+      "username": "ابوخالد",
+      "status": "success",
+      "account_id": "35f13fa1-2973-4698-8a0d-dd152f01a1ed",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780545063",
+      "username": "....",
+      "status": "success",
+      "account_id": "05f00b47-40b1-4ced-ad64-9a384e8b3f2e",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782430176",
+      "username": "ابو حمزه",
+      "status": "success",
+      "account_id": "e2f307ba-c0dc-4b9c-8cc4-0a2d52f57f0b",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782458361",
+      "username": "78735",
+      "status": "success",
+      "account_id": "84b7842f-f7ce-4978-b37c-1da81de40a34",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782787672",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989375886784",
+      "username": "2022",
+      "status": "success",
+      "account_id": "8bf04a1c-cc48-4142-89f4-bd4a2e9a1256",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989058182745",
+      "username": "حبیب",
+      "status": "success",
+      "account_id": "1c663d14-692e-413f-95ce-11b806232b72",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989394378798",
+      "username": "2021",
+      "status": "success",
+      "account_id": "88fcd515-1130-46f8-8415-35f6a9db121e",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989192957834",
+      "username": "Javid14434",
+      "status": "success",
+      "account_id": "9874f862-12fa-4f89-9b4b-d478c00358f9",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989332578463",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989924394902",
+      "username": "1",
+      "status": "success",
+      "account_id": "a829f143-91b9-46aa-862a-660dcb0678ba",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989354775971",
+      "username": "مرتضی",
+      "status": "success",
+      "account_id": "3a1c0482-e16e-4f6f-925e-2a570497d7ce",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "258877736473",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "50662834344",
+      "username": "62834344",
+      "status": "success",
+      "account_id": "7e4f0fef-d80f-4f36-a726-b2570b691eb0",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "50661297891",
+      "username": "Bri",
+      "status": "success",
+      "account_id": "c35cc726-d738-4cfd-86fb-5a4592e56fda",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989375107840",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989197684958",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "639453342429",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "9647706916488",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989197144272",
+      "username": "2022",
+      "status": "success",
+      "account_id": "bc20e4b0-a6da-46a9-bab8-6a9421c5a3c5",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "639453504598",
+      "username": "Carla_Nunez",
+      "status": "success",
+      "account_id": "812749ab-ae9b-483d-b88c-34112fed31ac",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "639154343410",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "50663099015",
+      "username": "Toledo",
+      "status": "success",
+      "account_id": "a9050171-3f5a-4831-8bdf-a705fd25f8b1",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967771151277",
+      "username": "DDD8899",
+      "status": "success",
+      "account_id": "52d9c4c2-5f0e-4475-9b8f-fd8911e44540",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967771676510",
+      "status": "failed",
+      "message": "406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)"
+    },
+    {
+      "phone_number": "+967771721954",
+      "status": "failed",
+      "message": "406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)"
+    },
+    {
+      "phone_number": "+967771733769",
+      "status": "failed",
+      "message": "406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)"
+    },
+    {
+      "phone_number": "+967771794654",
+      "status": "failed",
+      "message": "406: AUTH_KEY_DUPLICATED (caused by InvokeWithLayer)"
+    },
+    {
+      "phone_number": "+967779508923",
+      "username": "Nadia",
+      "status": "success",
+      "account_id": "03aab11e-692b-4385-9a0f-fd1779880cab",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967779601500",
+      "username": "مخبز قنوان",
+      "status": "success",
+      "account_id": "4387a344-67d1-46b0-a6c7-34bcaa99e4f9",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967779661698",
+      "username": "Waramodrrd",
+      "status": "success",
+      "account_id": "150a9807-42be-4aff-bb92-510b961c566e",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967779752027",
+      "username": "Coterbrsuang",
+      "status": "success",
+      "account_id": "348fd234-18b9-4467-9363-71a1fe03dba1",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967780760130",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967782696211",
+      "username": "ابو",
+      "status": "success",
+      "account_id": "ccea0863-b03f-4982-9772-5c51592be488",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "+967782973130",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "+967783017563",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989963753824",
+      "username": "2022",
+      "status": "success",
+      "account_id": "e1920bd5-9252-4070-841d-c853f80b4b64",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989011198647",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "989334662949",
+      "username": "soheileking",
+      "status": "success",
+      "account_id": "c8a9b050-1dd8-4dc5-a404-30b09c2db5f2",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989963068814",
+      "username": "54",
+      "status": "success",
+      "account_id": "cf66ef01-7f1f-4bca-93d1-639813dc57ec",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "989194533029",
+      "username": "2020",
+      "status": "success",
+      "account_id": "25a3ea43-c741-45ed-83f1-f1e0173fdc02",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "12792277340",
+      "username": "mohammadmr30",
+      "status": "success",
+      "account_id": "5a61a672-db92-4167-b8e5-2981f7795ffc",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "14243692914",
+      "username": "۲۲",
+      "status": "success",
+      "account_id": "57a9ff52-70ed-4e88-9406-a226cacd364b",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "50371307007",
+      "username": "2022",
+      "status": "success",
+      "account_id": "7274d1a8-5949-4259-b75e-06b04166f948",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "93781682891",
+      "status": "failed",
+      "message": "Account not authorized"
+    },
+    {
+      "phone_number": "970593923789",
+      "username": "Mohmmad",
+      "status": "success",
+      "account_id": "a52d8e0b-c3f1-48cb-b667-96366e69f91c",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "639153534970",
+      "username": "MayorGen",
+      "status": "success",
+      "account_id": "5ba6bb67-ac10-46ae-b2e2-94c32ed1fc8b",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "639453519790",
+      "username": "Jonathan",
+      "status": "success",
+      "account_id": "4ce0795b-67e9-44b0-b8a8-fb9336cd6406",
+      "message": "Account imported successfully"
+    },
+    {
+      "phone_number": "50664284594",
+      "username": "Maria",
+      "status": "success",
+      "account_id": "92554adb-8437-48b0-9e0d-70058dd79e82",
+      "message": "Account imported successfully"
+    }
+  ]
+}

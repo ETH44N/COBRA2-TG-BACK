@@ -1,0 +1,660 @@
+<div class="container-fluid py-4">
+  <!-- Page Header with Back Button -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex align-items-center">
+      <a href="/accounts" class="btn btn-outline-primary me-3">
+        <i class="bi bi-arrow-left"></i> Back to Accounts
+      </a>
+      <h2 class="mb-0">Account Details</h2>
+    </div>
+    <div>
+      <button type="button" class="btn btn-outline-primary me-2" id="refreshAccountBtn">
+        <i class="bi bi-arrow-repeat"></i> Refresh
+      </button>
+      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editAccountModal">
+        <i class="bi bi-pencil"></i> Edit Account
+      </button>
+    </div>
+  </div>
+
+  <!-- Account Card -->
+  <div class="card shadow mb-4">
+    <div class="card-header py-3">
+      <h6 class="m-0 font-weight-bold text-primary">Account Information</h6>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-3 text-center mb-4 mb-md-0">
+          <% if (account && account.photoUrl) { %>
+            <img src="<%= account.photoUrl %>" alt="Account photo" class="img-fluid rounded-circle mb-3" style="max-width: 150px; max-height: 150px;">
+          <% } else { %>
+            <div class="avatar-placeholder bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" style="width: 150px; height: 150px; font-size: 4rem;">
+              <%= account && account.firstName ? account.firstName.charAt(0).toUpperCase() : 'A' %>
+            </div>
+          <% } %>
+          
+          <div class="mb-3">
+            <span class="badge <%= account && account.status === 'active' ? 'bg-success' : 'bg-warning' %> px-3 py-2" style="font-size: 1rem;">
+              <%= account && account.status === 'active' ? 'Active' : 'Inactive' %>
+            </span>
+          </div>
+          
+          <div class="d-grid">
+            <% if (account && account.status === 'active') { %>
+              <button type="button" class="btn btn-outline-warning mb-2" id="logoutAccountBtn">
+                <i class="bi bi-box-arrow-right"></i> Logout
+              </button>
+            <% } else { %>
+              <button type="button" class="btn btn-outline-success mb-2" id="loginAccountBtn">
+                <i class="bi bi-box-arrow-in-right"></i> Login
+              </button>
+            <% } %>
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
+              <i class="bi bi-trash"></i> Delete Account
+            </button>
+          </div>
+        </div>
+        
+        <div class="col-md-9">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Phone Number</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-telephone"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.phone || 'Not provided' %>" readonly>
+              </div>
+            </div>
+            
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Username</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-at"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.username || 'Not provided' %>" readonly>
+              </div>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">First Name</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-person"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.firstName || 'Not provided' %>" readonly>
+              </div>
+            </div>
+            
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Last Name</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-person"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.lastName || 'Not provided' %>" readonly>
+              </div>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Account ID</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-key"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.telegramId || 'Not available' %>" readonly>
+              </div>
+            </div>
+            
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Last Login</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-clock"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.lastLoginDate ? new Date(account.lastLoginDate).toLocaleString() : 'Never' %>" readonly>
+              </div>
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Created At</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-calendar-plus"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.createdAt ? new Date(account.createdAt).toLocaleString() : 'Not available' %>" readonly>
+              </div>
+            </div>
+            
+            <div class="col-md-6 mb-3">
+              <label class="form-label text-muted">Updated At</label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="bi bi-calendar-check"></i></span>
+                <input type="text" class="form-control-plaintext" value="<%= account && account.updatedAt ? new Date(account.updatedAt).toLocaleString() : 'Not available' %>" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-primary shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-primary text-uppercase mb-1">Monitored Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.channelCount || 0 %></div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-broadcast fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-success shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-success text-uppercase mb-1">Total Messages</div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.messageCount || 0 %></div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-chat-left-text fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-info shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-info text-uppercase mb-1">Active Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.activeChannelCount || 0 %></div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-check-circle fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-warning shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-warning text-uppercase mb-1">Inactive Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.inactiveChannelCount || 0 %></div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channels Card -->
+  <div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+      <h6 class="m-0 font-weight-bold text-primary">Monitored Channels</h6>
+      <div>
+        <a href="/channels?accountId=<%= account && account._id %>" class="btn btn-sm btn-outline-primary me-2">
+          View All Channels
+        </a>
+        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+          <i class="bi bi-plus-lg"></i> Add Channel
+        </button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover" id="channelsTable" width="100%" cellspacing="0">
+          <thead>
+            <tr>
+              <th>Channel</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Messages</th>
+              <th>Last Activity</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (typeof channels !== 'undefined' && channels && channels.length > 0) { %>
+              <% channels.forEach(channel => { %>
+                <tr>
+                  <td>
+                    <div class="d-flex align-items-center">
+                      <div class="channel-icon me-2">
+                        <% if (channel.photoUrl) { %>
+                          <img src="<%= channel.photoUrl %>" alt="Channel photo" width="32" height="32" class="rounded-circle">
+                        <% } else { %>
+                          <div class="avatar-placeholder bg-info text-white rounded-circle">
+                            <%= channel.title ? channel.title.charAt(0).toUpperCase() : 'C' %>
+                          </div>
+                        <% } %>
+                      </div>
+                      <div>
+                        <div class="fw-bold"><%= channel.title || 'Unknown Channel' %></div>
+                        <div class="small text-muted">
+                          <%= channel.username ? '@' + channel.username : channel.channelId %>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="badge <%= channel.type === 'channel' ? 'bg-info' : channel.type === 'group' ? 'bg-primary' : 'bg-secondary' %>">
+                      <%= channel.type ? channel.type.charAt(0).toUpperCase() + channel.type.slice(1) : 'Unknown' %>
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge <%= channel.status === 'active' ? 'bg-success' : 'bg-warning' %>">
+                      <%= channel.status === 'active' ? 'Active' : 'Inactive' %>
+                    </span>
+                  </td>
+                  <td>
+                    <%= channel.messageCount || 0 %>
+                  </td>
+                  <td>
+                    <%= channel.lastActivityDate ? new Date(channel.lastActivityDate).toLocaleString() : 'Never' %>
+                  </td>
+                  <td>
+                    <div class="btn-group" role="group">
+                      <a href="/channels/<%= channel._id %>" class="btn btn-sm btn-info">
+                        <i class="bi bi-eye"></i>
+                      </a>
+                      <button type="button" class="btn btn-sm btn-danger" 
+                        data-bs-toggle="modal" data-bs-target="#removeChannelModal" 
+                        data-id="<%= channel._id %>"
+                        data-title="<%= channel.title %>">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="6" class="text-center py-4">
+                  <div class="d-flex flex-column align-items-center">
+                    <i class="bi bi-broadcast mb-3" style="font-size: 3rem;"></i>
+                    <h5>No channels found</h5>
+                    <p class="text-muted">Add channels to start monitoring</p>
+                    <button type="button" class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+                      <i class="bi bi-plus-lg me-1"></i> Add Channel
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity Card -->
+  <div class="card shadow mb-4">
+    <div class="card-header py-3">
+      <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
+    </div>
+    <div class="card-body">
+      <% if (typeof activities !== 'undefined' && activities && activities.length > 0) { %>
+        <div class="timeline-container">
+          <% activities.forEach((activity, index) => { %>
+            <div class="timeline-item">
+              <div class="timeline-item-marker">
+                <div class="timeline-item-marker-text"><%= new Date(activity.date).toLocaleTimeString() %></div>
+                <div class="timeline-item-marker-indicator bg-<%= ['primary', 'success', 'warning', 'info', 'danger'][index % 5] %>"></div>
+              </div>
+              <div class="timeline-item-content">
+                <div class="fw-bold"><%= activity.title %></div>
+                <div class="small text-muted"><%= activity.description %></div>
+                <div class="small text-muted"><%= new Date(activity.date).toLocaleDateString() %></div>
+              </div>
+            </div>
+          <% }) %>
+        </div>
+      <% } else { %>
+        <div class="text-center py-4">
+          <i class="bi bi-activity mb-3" style="font-size: 3rem;"></i>
+          <h5>No recent activity</h5>
+          <p class="text-muted">Activity will appear here once the account starts monitoring channels</p>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Account Modal -->
+<div class="modal fade" id="editAccountModal" tabindex="-1" aria-labelledby="editAccountModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editAccountModalLabel">Edit Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="editAccountForm" action="/accounts/<%= account && account._id %>" method="POST">
+          <input type="hidden" name="_method" value="PUT">
+          
+          <div class="mb-3">
+            <label for="editPhoneNumber" class="form-label">Phone Number</label>
+            <div class="input-group">
+              <span class="input-group-text">+</span>
+              <input type="text" class="form-control" id="editPhoneNumber" name="phone" value="<%= account && account.phone ? account.phone.replace('+', '') : '' %>" required>
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="editUsername" class="form-label">Username</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" class="form-control" id="editUsername" name="username" value="<%= account && account.username ? account.username.replace('@', '') : '' %>">
+            </div>
+          </div>
+          
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="editFirstName" class="form-label">First Name</label>
+              <input type="text" class="form-control" id="editFirstName" name="firstName" value="<%= account && account.firstName || '' %>">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label for="editLastName" class="form-label">Last Name</label>
+              <input type="text" class="form-control" id="editLastName" name="lastName" value="<%= account && account.lastName || '' %>">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="editAccountActive" name="active" <%= account && account.status === 'active' ? 'checked' : '' %>>
+              <label class="form-check-label" for="editAccountActive">Active</label>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="editAccountForm" class="btn btn-primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Account Modal -->
+<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteAccountModalLabel">Delete Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="deleteAccountForm" action="/accounts/<%= account && account._id %>" method="POST">
+          <input type="hidden" name="_method" value="DELETE">
+          
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Are you sure you want to delete account <strong><%= account && (account.phone || account.username || 'this account') %></strong>?
+            This action cannot be undone and will remove all associated channels and messages.
+          </div>
+          
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="confirmLogout" name="logout" checked>
+            <label class="form-check-label" for="confirmLogout">
+              Logout from Telegram before deleting
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="deleteAccountForm" class="btn btn-danger">Delete Account</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Channel Modal -->
+<div class="modal fade" id="addChannelModal" tabindex="-1" aria-labelledby="addChannelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addChannelModalLabel">Add Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addChannelForm" action="/channels" method="POST">
+          <input type="hidden" name="accountId" value="<%= account && account._id %>">
+          
+          <div class="mb-3">
+            <label for="channelIdentifier" class="form-label">Channel Username or Invite Link</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" class="form-control" id="channelIdentifier" name="identifier" required placeholder="channel_name">
+            </div>
+            <div class="form-text">Enter channel username without @ or full invite link</div>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="channelActive" name="active" checked>
+              <label class="form-check-label" for="channelActive">Monitor this channel</label>
+            </div>
+          </div>
+          
+          <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            You must be a member of the channel to monitor it. Private channels may require invitation.
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="addChannelForm" class="btn btn-primary">Add Channel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Remove Channel Modal -->
+<div class="modal fade" id="removeChannelModal" tabindex="-1" aria-labelledby="removeChannelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="removeChannelModalLabel">Remove Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="removeChannelForm" action="/channels" method="POST">
+          <input type="hidden" id="removeChannelId" name="id">
+          <input type="hidden" name="_method" value="DELETE">
+          
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Are you sure you want to stop monitoring <strong id="removeChannelName"></strong>?
+            All collected messages will be deleted.
+          </div>
+          
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="confirmLeave" name="leaveChannel">
+            <label class="form-check-label" for="confirmLeave">
+              Also leave the channel
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="removeChannelForm" class="btn btn-danger">Remove Channel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Refresh button
+    document.getElementById('refreshAccountBtn').addEventListener('click', function() {
+      window.location.reload();
+    });
+    
+    // Handle login button
+    const loginBtn = document.getElementById('loginAccountBtn');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', function() {
+        // Show a loading spinner
+        this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Logging in...';
+        this.disabled = true;
+        
+        // Submit login request
+        fetch('/accounts/<%= account && account._id %>/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            window.location.reload();
+          } else {
+            alert('Login failed: ' + data.message);
+            this.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Login';
+            this.disabled = false;
+          }
+        })
+        .catch(error => {
+          alert('Login failed: ' + error.message);
+          this.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> Login';
+          this.disabled = false;
+        });
+      });
+    }
+    
+    // Handle logout button
+    const logoutBtn = document.getElementById('logoutAccountBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', function() {
+        if (confirm('Are you sure you want to logout this account?')) {
+          // Show a loading spinner
+          this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Logging out...';
+          this.disabled = true;
+          
+          // Submit logout request
+          fetch('/accounts/<%= account && account._id %>/logout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert('Logout failed: ' + data.message);
+              this.innerHTML = '<i class="bi bi-box-arrow-right"></i> Logout';
+              this.disabled = false;
+            }
+          })
+          .catch(error => {
+            alert('Logout failed: ' + error.message);
+            this.innerHTML = '<i class="bi bi-box-arrow-right"></i> Logout';
+            this.disabled = false;
+          });
+        }
+      });
+    }
+    
+    // Handle channel removal button clicks
+    const removeChannelButtons = document.querySelectorAll('[data-bs-target="#removeChannelModal"]');
+    removeChannelButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const channelId = this.getAttribute('data-id');
+        const channelTitle = this.getAttribute('data-title');
+        
+        document.getElementById('removeChannelId').value = channelId;
+        document.getElementById('removeChannelName').textContent = channelTitle || 'this channel';
+      });
+    });
+  });
+</script>
+
+<style>
+  /* Timeline styles */
+  .timeline-container {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .timeline-item {
+    position: relative;
+    padding-bottom: 1.5rem;
+  }
+  
+  .timeline-item:last-child {
+    padding-bottom: 0;
+  }
+  
+  .timeline-item-marker {
+    position: absolute;
+    left: -1.5rem;
+    width: 1.5rem;
+  }
+  
+  .timeline-item-marker-text {
+    position: absolute;
+    width: 6rem;
+    color: #6c757d;
+    font-size: 0.85rem;
+    transform: translateX(-100%);
+    padding-right: 0.5rem;
+    text-align: right;
+  }
+  
+  .timeline-item-marker-indicator {
+    height: 0.75rem;
+    width: 0.75rem;
+    border-radius: 100%;
+    background-color: #e0e0e0;
+    position: absolute;
+    top: 0.2rem;
+    left: 0.375rem;
+  }
+  
+  .timeline-item-content {
+    position: relative;
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.35rem;
+    border-left: 4px solid #dee2e6;
+  }
+  
+  .timeline-item:not(:last-child):after {
+    content: '';
+    position: absolute;
+    background-color: #dee2e6;
+    height: calc(100% - 0.75rem);
+    width: 0.125rem;
+    top: 0.9rem;
+    left: -1.125rem;
+  }
+  
+  /* Avatar placeholder */
+  .avatar-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    font-weight: bold;
+  }
+</style> 

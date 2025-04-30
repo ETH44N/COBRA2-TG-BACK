@@ -1,0 +1,70 @@
+<!-- Error page -->
+<div class="container py-5">
+  <div class="row">
+    <div class="col-md-12 text-center mb-4">
+      <span class="display-1 d-block"><%= typeof status !== 'undefined' ? status : 'Error' %></span>
+      <div class="mb-4 lead">
+        <% if (typeof status !== 'undefined') { %>
+          <% if (status === 404) { %>
+            The page you are looking for was not found.
+          <% } else if (status === 403) { %>
+            You don't have permission to access this resource.
+          <% } else if (status === 500) { %>
+            Internal server error occurred.
+          <% } else { %>
+            An error has occurred.
+          <% } %>
+        <% } else { %>
+          Something went wrong.
+        <% } %>
+      </div>
+      <% if (typeof message !== 'undefined' && message) { %>
+        <div class="alert alert-danger">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <%= message %>
+        </div>
+      <% } %>
+      <a href="/" class="btn btn-link">Back to Home</a>
+    </div>
+  </div>
+  
+  <% if (typeof error !== 'undefined' && error && error.stack && process.env.NODE_ENV !== 'production') { %>
+    <div class="row mt-4">
+      <div class="col-md-12">
+        <div class="card">
+          <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">Error Details</h5>
+          </div>
+          <div class="card-body">
+            <pre class="mb-0 text-danger"><%= error.stack %></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title">Troubleshooting Steps</h5>
+      </div>
+      <div class="card-body">
+        <h6>MongoDB Connection Issues</h6>
+        <ol>
+          <li>Check that MongoDB is running on your system</li>
+          <li>Verify the connection string in your .env file</li>
+          <li>Ensure network connectivity to your MongoDB instance</li>
+          <li>Check MongoDB logs for any errors</li>
+        </ol>
+        <h6>General Troubleshooting</h6>
+        <ol>
+          <li>Restart the dashboard application</li>
+          <li>Check the console logs for more information</li>
+          <li>Verify all required environment variables are set</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div> 

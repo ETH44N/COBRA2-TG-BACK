@@ -1,0 +1,537 @@
+<div class="container-fluid py-4">
+  <!-- Page Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0">
+      <i class="bi bi-diagram-3-fill me-2 text-primary"></i>
+      Telegram Channels
+    </h2>
+    <div>
+      <button type="button" class="btn btn-outline-primary me-2" id="refreshChannelsBtn">
+        <i class="bi bi-arrow-repeat me-1"></i> Refresh
+      </button>
+      <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+        <i class="bi bi-plus-lg me-1"></i> Add Channel
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-primary shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-primary text-uppercase mb-1">Total Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= channels.length %></div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-diagram-3 fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-success shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-success text-uppercase mb-1">Active Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800">
+                <%= channels.filter(channel => channel.status === 'active').length %>
+              </div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-check-circle fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-info shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-info text-uppercase mb-1">Total Messages</div>
+              <div class="h5 mb-0 fw-bold text-gray-800" id="totalMessages">
+                <%= 
+                  channels.reduce((total, channel) => {
+                    return total + (channel.messageCount || 0);
+                  }, 0)
+                %>
+              </div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-chat-text fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+      <div class="card border-left-warning shadow h-100 py-2">
+        <div class="card-body">
+          <div class="row align-items-center">
+            <div class="col mr-2">
+              <div class="text-xs fw-bold text-warning text-uppercase mb-1">Inactive Channels</div>
+              <div class="h5 mb-0 fw-bold text-gray-800">
+                <%= channels.filter(channel => channel.status !== 'active').length %>
+              </div>
+            </div>
+            <div class="col-auto">
+              <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="card shadow mb-4">
+    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+      <h6 class="m-0 font-weight-bold text-primary">Manage Channels</h6>
+      <div class="input-group" style="max-width: 300px;">
+        <input type="text" class="form-control" placeholder="Search channels..." id="channelSearch">
+        <button class="btn btn-outline-secondary" type="button" id="clearSearch">
+          <i class="bi bi-x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover" id="channelsTable" width="100%" cellspacing="0">
+          <thead>
+            <tr>
+              <th>Channel</th>
+              <th>Status</th>
+              <th>Type</th>
+              <th>Messages</th>
+              <th>Last Activity</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (channels && channels.length > 0) { %>
+              <% channels.forEach(channel => { %>
+                <tr data-id="<%= channel._id %>">
+                  <td>
+                    <div class="d-flex align-items-center">
+                      <div class="channel-icon me-2">
+                        <% if (channel.photoUrl) { %>
+                          <img src="<%= channel.photoUrl %>" alt="Channel photo" width="32" height="32" class="rounded-circle">
+                        <% } else { %>
+                          <div class="avatar-placeholder bg-primary text-white rounded-circle">
+                            <%= channel.name ? channel.name.charAt(0).toUpperCase() : 'C' %>
+                          </div>
+                        <% } %>
+                      </div>
+                      <div>
+                        <div class="fw-bold"><%= channel.name || 'Unknown Channel' %></div>
+                        <div class="small text-muted">@<%= channel.username || channel.channelId || 'unknown' %></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="badge <%= channel.status === 'active' ? 'bg-success' : 'bg-warning' %>">
+                      <%= channel.status === 'active' ? 'Active' : 'Inactive' %>
+                    </span>
+                  </td>
+                  <td><%= channel.type || 'Unknown' %></td>
+                  <td><%= channel.messageCount || 0 %></td>
+                  <td>
+                    <% if (channel.lastActivity) { %>
+                      <%= new Date(channel.lastActivity).toLocaleString() %>
+                    <% } else { %>
+                      Never
+                    <% } %>
+                  </td>
+                  <td>
+                    <div class="btn-group" role="group">
+                      <a href="/channels/<%= channel._id %>" class="btn btn-sm btn-info">
+                        <i class="bi bi-eye"></i>
+                      </a>
+                      <button type="button" class="btn btn-sm btn-primary edit-channel" 
+                        data-bs-toggle="modal" data-bs-target="#editChannelModal" 
+                        data-id="<%= channel._id %>"
+                        data-name="<%= channel.name %>" 
+                        data-username="<%= channel.username %>"
+                        data-type="<%= channel.type %>"
+                        data-status="<%= channel.status %>">
+                        <i class="bi bi-pencil"></i>
+                      </button>
+                      <button type="button" class="btn btn-sm btn-danger delete-channel" 
+                        data-bs-toggle="modal" data-bs-target="#deleteChannelModal" 
+                        data-id="<%= channel._id %>"
+                        data-name="<%= channel.name %>">
+                        <i class="bi bi-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              <% }) %>
+            <% } else { %>
+              <tr>
+                <td colspan="6" class="text-center py-4">
+                  <div class="d-flex flex-column align-items-center">
+                    <i class="bi bi-diagram-3 mb-3" style="font-size: 3rem;"></i>
+                    <h5>No channels found</h5>
+                    <p class="text-muted">Add new channels to start monitoring</p>
+                    <button type="button" class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+                      <i class="bi bi-plus-lg me-1"></i> Add Channel
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Channel Modal -->
+<div class="modal fade" id="addChannelModal" tabindex="-1" aria-labelledby="addChannelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addChannelModalLabel">Add New Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addChannelForm" action="/channels" method="POST">
+          <div class="mb-3">
+            <label for="channelUsername" class="form-label">Channel Username/Link</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" class="form-control" id="channelUsername" name="username" required placeholder="telegram">
+            </div>
+            <div class="form-text">Enter the channel username without @ or full channel link</div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="accountId" class="form-label">Monitoring Account</label>
+            <select class="form-select" id="accountId" name="accountId" required>
+              <option value="" disabled selected>Select Account</option>
+              <% if (typeof accounts !== 'undefined' && accounts && accounts.length > 0) { %>
+                <% accounts.forEach(account => { %>
+                  <option value="<%= account._id %>"><%= account.phone %></option>
+                <% }) %>
+              <% } else { %>
+                <option value="" disabled>No accounts available</option>
+              <% } %>
+            </select>
+            <% if (typeof accounts === 'undefined' || !accounts || accounts.length === 0) { %>
+              <div class="form-text text-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i> 
+                No accounts found. <a href="/accounts">Add an account</a> first before adding channels.
+              </div>
+            <% } %>
+          </div>
+          
+          <div class="mb-3">
+            <label for="channelType" class="form-label">Channel Type</label>
+            <select class="form-select" id="channelType" name="type">
+              <option value="public">Public Channel</option>
+              <option value="private">Private Channel</option>
+              <option value="group">Group</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="channelActive" name="active" checked>
+              <label class="form-check-label" for="channelActive">Active Monitoring</label>
+            </div>
+          </div>
+          
+          <div class="alert alert-info">
+            <i class="bi bi-info-circle me-2"></i>
+            The system will attempt to join the channel using the selected account.
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="addChannelForm" class="btn btn-primary">Add Channel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Channel Modal -->
+<div class="modal fade" id="editChannelModal" tabindex="-1" aria-labelledby="editChannelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editChannelModalLabel">Edit Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="editChannelForm" action="/channels" method="POST">
+          <input type="hidden" id="editChannelId" name="id">
+          <input type="hidden" name="_method" value="PUT">
+          
+          <div class="mb-3">
+            <label for="editChannelName" class="form-label">Channel Name</label>
+            <input type="text" class="form-control" id="editChannelName" name="name" required>
+          </div>
+          
+          <div class="mb-3">
+            <label for="editChannelUsername" class="form-label">Channel Username</label>
+            <div class="input-group">
+              <span class="input-group-text">@</span>
+              <input type="text" class="form-control" id="editChannelUsername" name="username">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="editChannelType" class="form-label">Channel Type</label>
+            <select class="form-select" id="editChannelType" name="type">
+              <option value="public">Public Channel</option>
+              <option value="private">Private Channel</option>
+              <option value="group">Group</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="editChannelActive" name="active">
+              <label class="form-check-label" for="editChannelActive">Active Monitoring</label>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="editChannelForm" class="btn btn-primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Channel Modal -->
+<div class="modal fade" id="deleteChannelModal" tabindex="-1" aria-labelledby="deleteChannelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteChannelModalLabel">Delete Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="deleteChannelForm" action="/channels" method="POST">
+          <input type="hidden" id="deleteChannelId" name="id">
+          <input type="hidden" name="_method" value="DELETE">
+          
+          <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            Are you sure you want to delete channel <strong id="deleteChannelName"></strong>?
+            This action cannot be undone and will remove all associated data.
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" form="deleteChannelForm" class="btn btn-danger">Delete Channel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Channel search functionality
+    const searchInput = document.getElementById('channelSearch');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    const tableRows = document.querySelectorAll('#channelsTable tbody tr');
+    
+    // Real-time channel status check
+    function updateChannelStatuses() {
+      // Show a loading indicator in the refresh button
+      const refreshBtn = document.getElementById('refreshChannelsBtn');
+      const originalBtnContent = refreshBtn.innerHTML;
+      refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Checking...';
+      refreshBtn.disabled = true;
+      
+      // Fetch channel statuses from backend API
+      fetch('/api/channels/status')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          return response.json();
+        })
+        .then(data => {
+          // Process the response and update UI
+          if (data && data.channels) {
+            // Show backend status notification
+            if (data.backendRunning) {
+              showToast('Backend Status', 'Monitoring service is running correctly.', 'success');
+            } else {
+              showToast('Backend Status', 'Warning: Monitoring service is not running!', 'warning');
+            }
+            
+            // Loop through each channel in the response
+            data.channels.forEach(channel => {
+              // Find the row for this channel
+              const row = document.querySelector(`tr[data-id="${channel._id}"]`);
+              if (row) {
+                // Update the status badge
+                const statusBadge = row.querySelector('td:nth-child(2) .badge');
+                if (statusBadge) {
+                  // Update class and text based on real status
+                  statusBadge.className = `badge ${channel.isActive ? 'bg-success' : 'bg-warning'}`;
+                  statusBadge.textContent = channel.isActive ? 'Active' : 'Inactive';
+                }
+              }
+            });
+            
+            // Update the stats cards with new counts
+            const activeCount = data.channels.filter(c => c.isActive).length;
+            const inactiveCount = data.channels.length - activeCount;
+            
+            const activeCountEl = document.querySelector('.card-body .text-success + .h5');
+            const inactiveCountEl = document.querySelector('.card-body .text-warning + .h5');
+            
+            if (activeCountEl) activeCountEl.textContent = activeCount;
+            if (inactiveCountEl) inactiveCountEl.textContent = inactiveCount;
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching channel statuses:', error);
+          // Show an error toast
+          showToast('Update Failed', 'Could not connect to the dashboard API. Status information may not be accurate.', 'danger');
+        })
+        .finally(() => {
+          // Restore the refresh button
+          refreshBtn.innerHTML = originalBtnContent;
+          refreshBtn.disabled = false;
+        });
+    }
+    
+    // Simple toast notification function
+    function showToast(title, message, type = 'info') {
+      // Create toast container if it doesn't exist
+      let toastContainer = document.querySelector('.toast-container');
+      if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+        document.body.appendChild(toastContainer);
+      }
+      
+      // Create toast element
+      const toastId = 'toast-' + Date.now();
+      const toast = document.createElement('div');
+      toast.className = `toast bg-${type} text-white`;
+      toast.id = toastId;
+      toast.setAttribute('role', 'alert');
+      toast.setAttribute('aria-live', 'assertive');
+      toast.setAttribute('aria-atomic', 'true');
+      
+      // Set toast content
+      toast.innerHTML = `
+        <div class="toast-header bg-${type} text-white">
+          <strong class="me-auto">${title}</strong>
+          <small>Just now</small>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+        <div class="toast-body">
+          ${message}
+        </div>
+      `;
+      
+      // Add to container
+      toastContainer.appendChild(toast);
+      
+      // Initialize and show the toast
+      const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
+      bsToast.show();
+      
+      // Remove toast after hiding
+      toast.addEventListener('hidden.bs.toast', function() {
+        toast.remove();
+      });
+    }
+    
+    // Update channel statuses on page load
+    setTimeout(updateChannelStatuses, 1000);
+    
+    // Set interval to check statuses regularly (every 30 seconds)
+    const statusInterval = setInterval(updateChannelStatuses, 30000);
+    
+    // Clear interval when page is unloaded
+    window.addEventListener('beforeunload', function() {
+      clearInterval(statusInterval);
+    });
+    
+    // Connect the refresh button to manual status update
+    document.getElementById('refreshChannelsBtn').addEventListener('click', function(e) {
+      e.preventDefault(); // Prevent default reload behavior
+      updateChannelStatuses();
+    });
+    
+    searchInput.addEventListener('keyup', function() {
+      const searchTerm = this.value.toLowerCase();
+      tableRows.forEach(row => {
+        const channelName = row.querySelector('td:first-child .fw-bold').textContent.toLowerCase();
+        const channelUsername = row.querySelector('td:first-child .small').textContent.toLowerCase();
+        
+        if (channelName.includes(searchTerm) || channelUsername.includes(searchTerm)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    });
+    
+    clearSearchBtn.addEventListener('click', function() {
+      searchInput.value = '';
+      tableRows.forEach(row => {
+        row.style.display = '';
+      });
+    });
+    
+    // Handle edit channel modal
+    const editButtons = document.querySelectorAll('.edit-channel');
+    editButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const name = this.getAttribute('data-name');
+        const username = this.getAttribute('data-username');
+        const type = this.getAttribute('data-type');
+        const status = this.getAttribute('data-status');
+        
+        document.getElementById('editChannelId').value = id;
+        document.getElementById('editChannelName').value = name;
+        document.getElementById('editChannelUsername').value = username ? username.replace('@', '') : '';
+        document.getElementById('editChannelType').value = type || 'public';
+        document.getElementById('editChannelActive').checked = status === 'active';
+      });
+    });
+    
+    // Handle delete channel modal
+    const deleteButtons = document.querySelectorAll('.delete-channel');
+    deleteButtons.forEach(button => {
+      button.addEventListener('click', function() {
+        const id = this.getAttribute('data-id');
+        const name = this.getAttribute('data-name');
+        
+        document.getElementById('deleteChannelId').value = id;
+        document.getElementById('deleteChannelName').textContent = name || 'this channel';
+      });
+    });
+  });
+</script>
+
+<!-- Add the toast CSS -->
+<style>
+  .toast-container {
+    z-index: 1060;
+  }
+</style> 

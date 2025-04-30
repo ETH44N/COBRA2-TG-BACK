@@ -1,0 +1,346 @@
+<!-- Page header -->
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="page-header">
+            <i class="bi bi-broadcast"></i> 
+            <%= channel.name || channel.username || 'Channel ' + channel.channel_id %>
+        </h1>
+        <% if (channel.username) { %>
+            <p class="text-muted">@<%= channel.username %></p>
+        <% } %>
+    </div>
+    <div class="col-auto">
+        <a href="/channels" class="btn btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left"></i> Back to Channels
+        </a>
+        <button id="refresh-channel" class="btn btn-primary">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Channel Information -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">Channel Information</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>Channel ID:</strong></span>
+                        <span><%= channel.channel_id %></span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>Type:</strong></span>
+                        <span>
+                            <%= channel.type === 'supergroup' ? 'Supergroup' : 
+                               channel.type === 'channel' ? 'Channel' : 
+                               channel.type === 'group' ? 'Group' : 'Unknown' %>
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>Status:</strong></span>
+                        <span>
+                            <% if (channel.is_active) { %>
+                                <span class="badge bg-success">Active</span>
+                            <% } else { %>
+                                <span class="badge bg-warning">Inactive</span>
+                            <% } %>
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>Monitored By:</strong></span>
+                        <span>
+                            <% if (channel.account) { %>
+                                <a href="/accounts/<%= channel.account._id %>">
+                                    <%= channel.account.username || 'Account ' + channel.account._id %>
+                                </a>
+                            <% } else { %>
+                                <span class="text-muted">Not assigned</span>
+                            <% } %>
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>Date Joined:</strong></span>
+                        <span>
+                            <% if (channel.date_joined) { %>
+                                <span title="<%= moment(channel.date_joined).format('YYYY-MM-DD HH:mm:ss') %>">
+                                    <%= moment(channel.date_joined).format('YYYY-MM-DD') %>
+                                </span>
+                            <% } else { %>
+                                <span class="text-muted">Unknown</span>
+                            <% } %>
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span><strong>Last Message:</strong></span>
+                        <span>
+                            <% if (channel.last_message_at) { %>
+                                <span title="<%= moment(channel.last_message_at).format('YYYY-MM-DD HH:mm:ss') %>">
+                                    <%= moment(channel.last_message_at).fromNow() %>
+                                </span>
+                            <% } else { %>
+                                <span class="text-muted">No messages</span>
+                            <% } %>
+                        </span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">Message Activity</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="messageActivityChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Messages -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Recent Messages</h5>
+        <a href="#" class="btn btn-sm btn-outline-primary">View All Messages</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Sender</th>
+                        <th>Message</th>
+                        <th>Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (recentMessages && recentMessages.length > 0) { %>
+                        <% recentMessages.forEach(function(message) { %>
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="bg-primary text-white rounded-circle me-2 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                                            <i class="bi bi-person"></i>
+                                        </div>
+                                        <div>
+                                            <strong><%= message.sender_name || 'Unknown' %></strong>
+                                            <% if (message.sender_username) { %>
+                                                <div class="small text-muted">@<%= message.sender_username %></div>
+                                            <% } %>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-truncate" style="max-width: 300px;">
+                                    <%= message.text || (message.media_type ? 'Media: ' + message.media_type : 'No text') %>
+                                </td>
+                                <td>
+                                    <span title="<%= moment(message.date).format('YYYY-MM-DD HH:mm:ss') %>">
+                                        <%= moment(message.date).fromNow() %>
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary message-details-btn" data-message-id="<%= message._id %>">
+                                        <i class="bi bi-info-circle"></i> Details
+                                    </button>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="4" class="text-center py-4">No messages found</td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Message Stats -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Top Message Types</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="messageTypesChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Top Senders</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="topSendersChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Message Details Modal -->
+<div class="modal fade" id="messageDetailsModal" tabindex="-1" aria-labelledby="messageDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="messageDetailsModalLabel">Message Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="messageDetailsContent">
+                    <p class="text-center">Loading message details...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Refresh button functionality
+    document.getElementById('refresh-channel').addEventListener('click', function() {
+        location.reload();
+    });
+    
+    // Message Activity Chart
+    const messageActivity = <%= JSON.stringify(messageStats.dailyActivity || []) %>;
+    const labels = messageActivity.map(item => item._id);
+    const data = messageActivity.map(item => item.count);
+    
+    const activityCtx = document.getElementById('messageActivityChart').getContext('2d');
+    new Chart(activityCtx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Messages per Day',
+                data: data,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 2,
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            }
+        }
+    });
+    
+    // Message Types Chart
+    const messageTypes = <%= JSON.stringify(messageStats.messageTypes || []) %>;
+    const typeLabels = messageTypes.map(type => type._id || 'text');
+    const typeData = messageTypes.map(type => type.count);
+    const backgroundColors = [
+        'rgba(54, 162, 235, 0.5)',
+        'rgba(255, 99, 132, 0.5)',
+        'rgba(255, 206, 86, 0.5)',
+        'rgba(75, 192, 192, 0.5)',
+        'rgba(153, 102, 255, 0.5)',
+        'rgba(255, 159, 64, 0.5)'
+    ];
+    
+    const typesCtx = document.getElementById('messageTypesChart').getContext('2d');
+    new Chart(typesCtx, {
+        type: 'pie',
+        data: {
+            labels: typeLabels,
+            datasets: [{
+                data: typeData,
+                backgroundColor: backgroundColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+    
+    // Top Senders Chart
+    const topSenders = <%= JSON.stringify(messageStats.topSenders || []) %>;
+    const senderLabels = topSenders.map(sender => sender._id || 'Unknown');
+    const senderData = topSenders.map(sender => sender.count);
+    
+    const sendersCtx = document.getElementById('topSendersChart').getContext('2d');
+    new Chart(sendersCtx, {
+        type: 'bar',
+        data: {
+            labels: senderLabels,
+            datasets: [{
+                label: 'Messages Sent',
+                data: senderData,
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        precision: 0
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+    
+    // Message details modal
+    const messageDetailsBtns = document.querySelectorAll('.message-details-btn');
+    messageDetailsBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const messageId = this.getAttribute('data-message-id');
+            
+            // Here you would normally fetch the message details from the server
+            // For now, we'll just show a placeholder
+            const messageDetailsContent = document.getElementById('messageDetailsContent');
+            messageDetailsContent.innerHTML = `
+                <div class="alert alert-info">
+                    Loading details for message ID: ${messageId}...
+                    <br>
+                    <small>Note: API endpoint for message details not yet implemented.</small>
+                </div>
+            `;
+            
+            // Show the modal
+            const messageModal = new bootstrap.Modal(document.getElementById('messageDetailsModal'));
+            messageModal.show();
+        });
+    });
+});
+</script> 

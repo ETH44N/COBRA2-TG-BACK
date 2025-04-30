@@ -1,0 +1,337 @@
+<!-- Page header -->
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="page-header">Dashboard</h1>
+    </div>
+    <div class="col-auto">
+        <button id="refresh-stats" class="btn btn-primary">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Status Cards -->
+<div class="row mb-4">
+    <!-- Account Stats -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Accounts</h5>
+                <span class="badge bg-primary rounded-pill"><%= accountStats.total %></span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-success rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Active</span>
+                    </div>
+                    <span class="badge bg-success rounded-pill"><%= accountStats.active %></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-danger rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Banned</span>
+                    </div>
+                    <span class="badge bg-danger rounded-pill"><%= accountStats.banned %></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-warning rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Inactive</span>
+                    </div>
+                    <span class="badge bg-warning rounded-pill"><%= accountStats.inactive %></span>
+                </div>
+                <canvas id="accountsChart" height="100"></canvas>
+                <div class="mt-3 text-center">
+                    <a href="/accounts" class="btn btn-sm btn-outline-primary">View All Accounts</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Channels Stats -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Channels</h5>
+                <span class="badge bg-primary rounded-pill"><%= channelStats.total %></span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-success rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Active</span>
+                    </div>
+                    <span class="badge bg-success rounded-pill"><%= channelStats.active %></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-warning rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Inactive</span>
+                    </div>
+                    <span class="badge bg-warning rounded-pill"><%= channelStats.inactive %></span>
+                </div>
+                <canvas id="channelsChart" height="100"></canvas>
+                <div class="mt-3 text-center">
+                    <a href="/channels" class="btn btn-sm btn-outline-primary">View All Channels</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages Stats -->
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Messages</h5>
+                <span class="badge bg-primary rounded-pill"><%= messageStats.total %></span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-success rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Active</span>
+                    </div>
+                    <span class="badge bg-success rounded-pill"><%= messageStats.active %></span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex align-items-center">
+                        <div class="bg-danger rounded-circle me-2" style="width: 12px; height: 12px;"></div>
+                        <span>Deleted</span>
+                    </div>
+                    <span class="badge bg-danger rounded-pill"><%= messageStats.deleted %></span>
+                </div>
+                <canvas id="messagesChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>Channel</th>
+                                <th>Timestamp</th>
+                                <th>Content</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% if (recentMessages && recentMessages.length > 0) { %>
+                                <% recentMessages.forEach(function(message) { %>
+                                    <tr>
+                                        <td>
+                                            <% if (message.channel_id && message.channel_id.name) { %>
+                                                <a href="/channels/<%= message.channel_id._id %>">
+                                                    <%= message.channel_id.name %>
+                                                </a>
+                                            <% } else { %>
+                                                <span class="text-muted">Unknown Channel</span>
+                                            <% } %>
+                                        </td>
+                                        <td>
+                                            <%= moment(message.created_at).format('YYYY-MM-DD HH:mm:ss') %>
+                                        </td>
+                                        <td>
+                                            <% const content = message.text || message.content; %>
+                                            <%= content ? (content.substring(0, 50) + (content.length > 50 ? '...' : '')) : '<no content>' %>
+                                        </td>
+                                        <td>
+                                            <% if (message.is_deleted) { %>
+                                                <span class="badge bg-danger">Deleted</span>
+                                            <% } else { %>
+                                                <span class="badge bg-success">Active</span>
+                                            <% } %>
+                                        </td>
+                                    </tr>
+                                <% }); %>
+                            <% } else { %>
+                                <tr>
+                                    <td colspan="4" class="text-center py-3">No recent messages found</td>
+                                </tr>
+                            <% } %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- System Info -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">System Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-clock me-2 text-primary"></i>
+                            <strong>Uptime:</strong>
+                            <span class="ms-2" id="uptime">
+                                <% 
+                                    // Inline uptime formatting since formatUptime is not defined
+                                    const seconds = systemInfo && systemInfo.uptime ? systemInfo.uptime : 0;
+                                    const days = Math.floor(seconds / 86400);
+                                    const hours = Math.floor((seconds % 86400) / 3600);
+                                    const minutes = Math.floor((seconds % 3600) / 60);
+                                    const parts = [];
+                                    
+                                    if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+                                    if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
+                                    if (minutes > 0) parts.push(`${minutes} minute${minutes > 1 ? 's' : ''}`);
+                                    
+                                    const uptimeText = parts.join(', ') || 'Just started';
+                                %>
+                                <%= uptimeText %>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-hdd me-2 text-primary"></i>
+                            <strong>Node Version:</strong>
+                            <span class="ms-2"><%= systemInfo.nodeVersion %></span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-calendar me-2 text-primary"></i>
+                            <strong>Server Time:</strong>
+                            <span class="ms-2"><%= moment().format('YYYY-MM-DD HH:mm:ss') %></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Helper function to format uptime
+    function formatUptime(seconds) {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const parts = [];
+        
+        if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+        if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
+        if (minutes > 0) parts.push(`${minutes} minute${minutes > 1 ? 's' : ''}`);
+        
+        return parts.join(', ') || 'Just started';
+    }
+    
+    // Initialize charts
+    const accountCtx = document.getElementById('accountsChart').getContext('2d');
+    new Chart(accountCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Active', 'Banned', 'Inactive'],
+            datasets: [{
+                data: [
+                    <%= accountStats.active || 0 %>, 
+                    <%= accountStats.banned || 0 %>, 
+                    <%= accountStats.inactive || 0 %>
+                ],
+                backgroundColor: ['#198754', '#dc3545', '#ffc107'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            cutout: '70%',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+    
+    const channelCtx = document.getElementById('channelsChart').getContext('2d');
+    new Chart(channelCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Active', 'Inactive'],
+            datasets: [{
+                data: [
+                    <%= channelStats.active || 0 %>, 
+                    <%= channelStats.inactive || 0 %>
+                ],
+                backgroundColor: ['#198754', '#ffc107'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            cutout: '70%',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+    
+    const messageCtx = document.getElementById('messagesChart').getContext('2d');
+    new Chart(messageCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Active', 'Deleted'],
+            datasets: [{
+                data: [
+                    <%= messageStats.active || 0 %>, 
+                    <%= messageStats.deleted || 0 %>
+                ],
+                backgroundColor: ['#198754', '#dc3545'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            cutout: '70%',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+    
+    // Refresh button functionality
+    document.getElementById('refresh-stats').addEventListener('click', function() {
+        location.reload();
+    });
+});
+
+// Helper function to format uptime for EJS
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const parts = [];
+    
+    if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+    if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
+    if (minutes > 0) parts.push(`${minutes} minute${minutes > 1 ? 's' : ''}`);
+    
+    return parts.join(', ') || 'Just started';
+}
+</script> 

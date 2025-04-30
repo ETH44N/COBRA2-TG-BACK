@@ -1,0 +1,55 @@
+/* Dashboard Styles */
+
+/* General Styles */
+body {
+  padding-bottom: 70px;
+  background-color: #f8f9fa;
+}
+
+/* Card Hover Effect */
+.card {
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-5px);
+}
+
+/* Table Styles */
+.table-hover tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Navigation Active Link */
+.navbar-dark .navbar-nav .nav-link.active {
+  font-weight: bold;
+  color: white;
+}
+
+/* Footer styles */
+.footer {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  z-index: 1000;
+  border-top: 1px solid #dee2e6;
+}
+
+/* Status Badges */
+.badge {
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+/* Progress bars */
+.progress {
+  height: 5px;
+  margin-top: 5px;
+}
+
+/* Canvas charts */
+canvas {
+  width: 100% !important;
+  height: auto !important;
+} 
