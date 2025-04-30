@@ -20,8 +20,8 @@ const CHANNELS_FILE = customFile
   ? path.join(__dirname, '..', customFile) 
   : path.join(__dirname, '../channels.txt');
 let BATCH_SIZE = 5; // Process 5 channels at a time
-let BATCH_DELAY_MS = 3600000; // 1 hour between batches
-let CHANNEL_DELAY_MS = 300000; // 5 minutes between channel joins
+let BATCH_DELAY_MS = 0; // 1 hour between batches
+let CHANNEL_DELAY_MS = 2000; // 5 minutes between channel joins
 const MAX_CHANNELS_PER_ACCOUNT = parseInt(process.env.MAX_CHANNELS_PER_ACCOUNT || '40', 10);
 const SAFE_JOIN_LIMIT_PER_DAY = 15; // Conservative limit for channel joins per account per day
 
@@ -183,8 +183,11 @@ async function processChannelsInBatches(channels) {
           }
           
           // Wait between channel joins
-          logger.info(`Waiting ${CHANNEL_DELAY_MS/60000} minutes before next channel join...`);
-          await new Promise(resolve => setTimeout(resolve, CHANNEL_DELAY_MS));
+          if (CHANNEL_DELAY_MS >= 60000) {
+            logger.info(`Waiting ${(CHANNEL_DELAY_MS / 60000).toFixed(2)} minutes before next channel join...`);
+          } else {
+            logger.info(`Waiting ${CHANNEL_DELAY_MS / 1000} seconds before next channel join...`);
+          }          await new Promise(resolve => setTimeout(resolve, CHANNEL_DELAY_MS));
         } catch (error) {
           logger.error(`Error processing channel ${channelUrl}: ${error.message}`);
           logFile.write(`${channelUrl} | ERROR | ${error.message}\n`);
