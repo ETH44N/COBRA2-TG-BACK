@@ -348,81 +348,123 @@ const updateRateLimit = (accountId) => {
 
 /**
  * Fetch message history for a channel
- * @param {Object} channel - Channel document
+ * @param {string} channelId - Channel ID (database ID)
  * @param {Object} account - Account document
  * @param {Object} client - Telegram client
  * @param {number} limit - Maximum number of messages to fetch
- * @returns {Promise<Object>} - Result object with count of processed messages
+ * @returns {Promise<number>} - Count of processed messages
  */
-const fetchMessageHistory = async (channel, account, client, limit = 100) => {
+const fetchMessageHistory = async (channelId, account, client, limit = 20) => {
   try {
-    if (!client) {
-      throw new Error(`No active client for account ${account.phone_number}`);
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      logger.error(`Cannot fetch history: Channel ${channelId} not found in database`, {
+        source: 'message-listener'
+      });
+      return;
     }
-    
-    logger.info(`Fetching up to ${limit} messages from channel ${channel.channel_id}`, {
-      source: 'message-listener'
+
+    logger.info(`Fetching message history for channel ${channel.channel_id}`, {
+      source: 'message-listener',
+      accountId: account._id.toString()
     });
-    
-    // Get the channel entity
-    const entity = await client.getEntity(channel.channel_id);
-    
-    // Get message history
-    const messages = await client.getMessages(entity, {
-      limit: limit
-    });
-    
-    logger.info(`Fetched ${messages.length} historical messages for channel ${channel.channel_id}`, {
-      source: 'message-listener'
-    });
-    
+
+    // Get the entity for this channel
+    let entity;
+    try {
+      entity = await client.getEntity(channel.channel_id);
+      if (!entity) {
+        logger.warn(`Could not get entity for channel ${channel.channel_id}`, {
+          source: 'message-listener'
+        });
+        return;
+      }
+    } catch (error) {
+      logger.error(`Error getting entity for channel ${channel.channel_id}: ${error.message}`, {
+        source: 'message-listener',
+        stack: error.stack
+      });
+      return;
+    }
+
+    // Fetch messages
+    let messages;
+    try {
+      messages = await client.getMessages(entity, {
+        limit: limit
+      });
+      
+      logger.info(`Fetched ${messages.length} messages from channel ${channel.channel_id}`, {
+        source: 'message-listener'
+      });
+    } catch (error) {
+      logger.error(`Error fetching messages for channel ${channel.channel_id}: ${error.message}`, {
+        source: 'message-listener',
+        stack: error.stack
+      });
+      return;
+    }
+
     // Process each message
     let processedCount = 0;
     for (const message of messages) {
+      if (!message || !message.id) continue;
+      
       try {
-        // Skip messages without an ID
-        if (!message.id) {
-          logger.warn(`Skipping historical message without ID in channel ${channel.channel_id}`, {
-            source: 'message-listener'
-          });
-          continue;
-        }
-        
-        // Queue message for processing
-        await queueMessageForProcessing({
-          type: 'new',
-          channelId: channel._id,
-          message,
-          client,
-          accountId: account._id.toString()
+        // Check if we already have this message
+        const existingMessage = await Message.findOne({
+          channel_id: channelId,
+          message_id: message.id.toString()
         });
-        
-        processedCount++;
+
+        if (!existingMessage) {
+          // Queue the message for processing
+          await queueMessageForProcessing({
+            type: 'new',
+            channelId,
+            message,
+            client,
+            accountId: account._id.toString()
+          });
+          processedCount++;
+        }
       } catch (error) {
-        logger.error(`Error processing historical message: ${error.message}`, {
-          source: 'message-listener',
-          context: { error: error.stack }
+        logger.error(`Error processing message ${message.id} from history: ${error.message}`, {
+          channelId,
+          source: 'message-listener'
         });
       }
     }
     
-    // Update channel last_checked
-    await Channel.findByIdAndUpdate(channel._id, {
+    logger.info(`Processed ${processedCount} new messages from history for channel ${channel.channel_id}`, {
+      source: 'message-listener'
+    });
+    
+    // Update channel last checked time
+    await Channel.findByIdAndUpdate(channelId, {
       last_checked: new Date()
     });
     
-    return {
-      success: true,
-      count: processedCount,
-      queueLength: messageQueue.queue.length
-    };
+    return processedCount;
   } catch (error) {
-    logger.error(`Error fetching message history for channel ${channel.channel_id}: ${error.message}`, {
+    logger.error(`Error fetching message history: ${error.message}`, {
+      channelId,
       source: 'message-listener',
-      context: { error: error.stack }
+      stack: error.stack
     });
     throw error;
   }
+};
+
+// Create messageListener object for easier importing
+const messageListener = {
+  processNewMessage,
+  processDeletedMessage,
+  fetchMessageHistory,
+  queueMessageForProcessing,
+  processMessageQueue,
+  RATE_LIMIT,
+  messageQueue
 };
 
 module.exports = {
@@ -431,5 +473,6 @@ module.exports = {
   fetchMessageHistory,
   queueMessageForProcessing,
   RATE_LIMIT,
-  messageQueue
+  messageQueue,
+  messageListener
 }; 

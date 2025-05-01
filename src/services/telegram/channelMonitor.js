@@ -565,6 +565,7 @@ const startAccountListener = async (account, channels) => {
     // Create channel ID map for quick lookups
     const channelIdsMap = {};
     const telegramChannelIds = [];
+    const channelEntities = [];
     
     for (const channel of channels) {
       if (channel && channel.channel_id) {
@@ -572,6 +573,7 @@ const startAccountListener = async (account, channels) => {
         try {
           const entity = await client.getEntity(channel.channel_id);
           channelEntityCache.set(channel.channel_id, entity);
+          channelEntities.push(entity);
           
           // Store the numeric/internal Telegram ID if available
           if (entity && entity.id) {
@@ -602,30 +604,32 @@ const startAccountListener = async (account, channels) => {
         
         if (!event.message) return;
         
-        // Get relevant IDs from the message event
-        let peerId = null;
+        // Get channel ID either from the message directly or the chat
+        let channelId = null;
+        let chatId = null;
         
-        if (event.message.peerId && event.message.peerId.channelId) {
-          peerId = event.message.peerId.channelId.toString();
+        // Try to get the chatId from different possible locations
+        if (event.chat && event.chat.id) {
+          chatId = event.chat.id.toString();
+        } else if (event.message.peerId && event.message.peerId.channelId) {
+          chatId = event.message.peerId.channelId.toString();
         } else if (event.message.chatId) {
-          peerId = event.message.chatId.toString();
-        } else if (event.chat && event.chat.id) {
-          peerId = event.chat.id.toString();
+          chatId = event.message.chatId.toString();
         }
         
-        // Skip if no valid peer ID
-        if (!peerId) {
-          logger.debug(`Skipping message with no peer ID`, {
+        // Skip if no valid chat ID
+        if (!chatId) {
+          logger.debug(`Skipping message with no chat ID`, {
             source: 'channel-monitor'
           });
           return;
         }
         
-        // Check if this message is from one of our monitored channels
-        const channelDbId = channelIdsMap[peerId];
+        // Check if this is one of our monitored channels
+        channelId = channelIdsMap[chatId];
         
-        if (channelDbId) {
-          logger.info(`Received NEW message event from monitored channel (peer ID: ${peerId}, message ID: ${event.message.id})`, {
+        if (channelId) {
+          logger.info(`Received NEW message event from monitored channel (ID: ${chatId}, message ID: ${event.message.id})`, {
             source: 'channel-monitor'
           });
           
@@ -640,7 +644,7 @@ const startAccountListener = async (account, channels) => {
           // Process new message with rate limiting
           await queueMessageForProcessing({
             type: 'new',
-            channelId: channelDbId,
+            channelId: channelId,
             message: event.message,
             client,
             accountId: account._id.toString()
@@ -694,22 +698,85 @@ const startAccountListener = async (account, channels) => {
       }
     };
     
-    // Register both event handlers
+    // Register both event handlers with proper error handling
     const { NewMessage, Raw } = require('telegram/events');
     
-    // Add event handler for new messages 
-    client.addEventHandler(newMessageHandler, new NewMessage({
-      chats: telegramChannelIds.length > 0 ? telegramChannelIds : null
-    }));
+    let newMessageHandlerRegistered = false;
+    let rawHandlerRegistered = false;
     
-    // Add raw event handler for catching message deletions
-    client.addEventHandler(rawUpdateHandler, new Raw({}));
+    try {
+      // Register NewMessage handler
+      client.addEventHandler(newMessageHandler, new NewMessage({}));
+      newMessageHandlerRegistered = true;
+      logger.info(`Registered NewMessage handler for account ${account.phone_number}`, {
+        source: 'channel-monitor'
+      });
+    } catch (nmError) {
+      logger.error(`Failed to register NewMessage handler: ${nmError.message}`, {
+        source: 'channel-monitor',
+        stack: nmError.stack
+      });
+    }
+    
+    try {
+      // Register Raw handler
+      client.addEventHandler(rawUpdateHandler, new Raw({}));
+      rawHandlerRegistered = true;
+      logger.info(`Registered Raw update handler for account ${account.phone_number}`, {
+        source: 'channel-monitor'
+      });
+    } catch (rawError) {
+      logger.error(`Failed to register Raw update handler: ${rawError.message}`, {
+        source: 'channel-monitor',
+        stack: rawError.stack
+      });
+    }
+    
+    if (!newMessageHandlerRegistered && !rawHandlerRegistered) {
+      throw new Error('Failed to register any event handlers');
+    }
+    
+    // Also set up a periodic message history check as a fallback
+    // This ensures we catch messages even if the event system fails
+    const messageCheckInterval = setInterval(async () => {
+      try {
+        logger.debug(`Running periodic message history check for account ${account.phone_number}`, {
+          source: 'channel-monitor'
+        });
+        
+        // Check a small sample of channels (to avoid overloading)
+        const sampleChannels = channels.slice(0, 3);
+        
+        for (const channel of sampleChannels) {
+          try {
+            const entity = channelEntityCache.get(channel.channel_id);
+            
+            if (entity) {
+              // Fetch last 5 messages only to avoid heavy load
+              const { messageListener } = require('./messageListener');
+              await messageListener.fetchMessageHistory(channel._id.toString(), account, client, 5);
+            }
+          } catch (channelError) {
+            logger.error(`Error checking message history for channel ${channel.channel_id}: ${channelError.message}`, {
+              source: 'channel-monitor',
+              accountId: account._id.toString()
+            });
+          }
+        }
+      } catch (checkError) {
+        logger.error(`Error in periodic message history check: ${checkError.message}`, {
+          source: 'channel-monitor',
+          accountId: account._id.toString()
+        });
+      }
+    }, 10 * 60 * 1000); // Check every 10 minutes
     
     // Store listener
     activeAccountListeners.set(account._id.toString(), {
       client,
       handlers: [newMessageHandler, rawUpdateHandler],
-      channelIds: channels.map(c => c._id.toString())
+      channelIds: channels.map(c => c._id.toString()),
+      messageCheckInterval
     });
     
     logger.info(`Started account listener for ${account.phone_number} monitoring ${channels.length} channels`, {

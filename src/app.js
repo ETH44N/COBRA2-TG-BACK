@@ -36,19 +36,72 @@ app.use('/api/channels', channelRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/webhooks', webhookRoutes);
 
-// Debug endpoint to check app status
-app.get('/debug', (req, res) => {
-  logger.info('Debug endpoint accessed', { source: 'app' });
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    routes: {
-      messageRoutes: !!messageRoutes,
-      accountRoutes: !!accountRoutes,
-      channelRoutes: !!channelRoutes,
-      webhookRoutes: !!webhookRoutes
+// Debug endpoint
+app.get('/debug', async (req, res) => {
+  try {
+    const gramJSVersion = require('telegram/version');
+    const { activeAccountListeners, channelEntityCache } = require('./services/telegram/channelMonitor');
+    const { messageQueue, RATE_LIMIT } = require('./services/telegram/messageListener');
+    
+    const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    
+    // Get counts from DB
+    const accountCount = await Account.countDocuments({ status: 'active', isBanned: { $ne: true } });
+    const channelCount = await Channel.countDocuments({ is_active: true });
+    const recentMessages = await Message.countDocuments({ 
+      created_at: { $gte: new Date(Date.now() - 60 * 60 * 1000) } // Last hour
+    });
+    
+    // Detailed information about each active listener
+    const listenersInfo = [];
+    for (const [accountId, listener] of activeAccountListeners.entries()) {
+      const account = await Account.findById(accountId);
+      listenersInfo.push({
+        accountId,
+        phone: account ? account.phone_number : 'unknown',
+        handlerCount: listener.handlers ? listener.handlers.length : 0,
+        monitoredChannels: listener.channelIds ? listener.channelIds.length : 0,
+        hasInterval: !!listener.messageCheckInterval,
+        clientConnected: listener.client && listener.client.connected
+      });
     }
-  });
+    
+    // Generate report
+    const debugInfo = {
+      system: {
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        nodeVersion: process.version,
+        memoryUsage: process.memoryUsage(),
+        gramJSVersion: gramJSVersion || 'unknown'
+      },
+      database: {
+        status: dbStatus,
+        activeAccounts: accountCount,
+        activeChannels: channelCount,
+        recentMessages
+      },
+      telegram: {
+        activeListenersCount: activeAccountListeners.size,
+        channelEntityCacheSize: channelEntityCache.size,
+        listeners: listenersInfo,
+        messageQueueLength: messageQueue.queue.length,
+        messageQueueActive: messageQueue.isProcessing,
+        rateLimit: RATE_LIMIT
+      }
+    };
+    
+    res.status(200).json({
+      status: 'ok',
+      debug: debugInfo
+    });
+  } catch (error) {
+    console.error('Error generating debug info:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
 });
 
 // Health check endpoint

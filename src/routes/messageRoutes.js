@@ -235,48 +235,83 @@ router.post('/test-message', async (req, res) => {
   }
 });
 
-// Get event monitoring status
+// Get monitor status (active event handlers)
 router.get('/monitor-status', async (req, res) => {
   try {
-    const { channelMonitor } = require('../services/telegram/channelMonitor');
-    const { RATE_LIMIT, messageQueue } = require('../services/telegram/messageListener');
+    // Import services with required variables
+    const { activeAccountListeners, channelEntityCache } = require('../services/telegram/channelMonitor');
+    const { messageQueue, RATE_LIMIT } = require('../services/telegram/messageListener');
     
-    // Get active accounts and their listeners
-    const accounts = await Account.find({ status: 'active' }).lean();
-    const activeListeners = [];
-    
-    for (const account of accounts) {
-      const accountId = account._id.toString();
-      const hasListener = channelMonitor && channelMonitor.activeAccountListeners && 
-                        channelMonitor.activeAccountListeners.has(accountId);
-                        
-      activeListeners.push({
-        account_id: accountId,
-        phone: account.phone_number,
-        has_active_listener: hasListener,
-        monitored_channels: hasListener ? 
-          channelMonitor.activeAccountListeners.get(accountId).channelIds.length : 0
+    // Check if we have the required variables
+    if (!activeAccountListeners) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Could not access activeAccountListeners - module may not be initialized'
       });
     }
     
-    // Get rate limits and queue status
-    const rateLimit = {
-      accounts: Object.keys(RATE_LIMIT.accounts).length,
-      details: RATE_LIMIT.accounts
-    };
+    // Count of active accounts in the database
+    const activeAccounts = await Account.countDocuments({
+      status: 'active', 
+      isBanned: { $ne: true }
+    });
     
-    const queue = {
-      length: messageQueue.queue.length,
-      is_processing: messageQueue.isProcessing
-    };
+    // Get recent messages count
+    const recentMessages = await Message.countDocuments({
+      created_at: { $gte: new Date(Date.now() - 30 * 60 * 1000) } // Last 30 minutes
+    });
     
-    return res.status(200).json({
-      success: true,
-      data: {
-        active_listeners: activeListeners,
-        rate_limit: rateLimit,
-        queue: queue,
-        total_entity_cache: channelMonitor ? channelMonitor.channelEntityCache.size : 0
+    // Information about each active listener
+    const listenersInfo = [];
+    for (const [accountId, listener] of activeAccountListeners.entries()) {
+      // Get the account information
+      const account = await Account.findById(accountId);
+      
+      // Get channel information for this listener
+      const channels = [];
+      if (listener.channelIds && listener.channelIds.length > 0) {
+        for (const channelId of listener.channelIds) {
+          const channel = await Channel.findById(channelId);
+          if (channel) {
+            channels.push({
+              id: channelId,
+              channelId: channel.channel_id,
+              title: channel.title,
+              lastChecked: channel.last_checked
+            });
+          }
+        }
+      }
+      
+      // Add to list of listeners
+      listenersInfo.push({
+        accountId,
+        phone: account ? account.phone_number : 'unknown',
+        handlerCount: listener.handlers ? listener.handlers.length : 0,
+        monitoredChannels: listener.channelIds ? listener.channelIds.length : 0,
+        channels: channels.slice(0, 5), // Only include up to 5 channels to keep response reasonable
+        hasInterval: !!listener.messageCheckInterval,
+        clientConnected: listener.client && listener.client.connected
+      });
+    }
+    
+    // Return monitor status data
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      activeAccounts,
+      activeListeners: {
+        count: activeAccountListeners.size,
+        listeners: listenersInfo
+      },
+      messageQueue: {
+        length: messageQueue ? messageQueue.queue.length : 0,
+        isProcessing: messageQueue ? messageQueue.isProcessing : false,
+        rateLimit: RATE_LIMIT
+      },
+      stats: {
+        recentMessages,
+        entityCacheSize: channelEntityCache ? channelEntityCache.size : 0
       }
     });
   } catch (error) {
@@ -285,9 +320,157 @@ router.get('/monitor-status', async (req, res) => {
       stack: error.stack
     });
     
+    res.status(500).json({
+      status: 'error',
+      message: `Could not get monitor status: ${error.message}`
+    });
+  }
+});
+
+// Add a test endpoint to check Telegram event listening
+router.get('/test-telegram-updates', async (req, res) => {
+  try {
+    const channelId = req.query.channelId;
+    const accountId = req.query.accountId;
+    
+    if (!channelId || !accountId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both channelId and accountId parameters are required'
+      });
+    }
+    
+    // Get account
+    const account = await Account.findById(accountId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: `Account with ID ${accountId} not found`
+      });
+    }
+    
+    // Get channel
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: `Channel with ID ${channelId} not found`
+      });
+    }
+    
+    // Get Telegram client
+    const telegramClient = require('../services/telegram/telegramClient');
+    const client = await telegramClient.getClient(account);
+    
+    if (!client) {
+      return res.status(500).json({
+        success: false,
+        message: 'Could not create Telegram client'
+      });
+    }
+    
+    // Log that we're testing directly
+    logger.info(`Testing direct Telegram updates for channel ${channel.channel_id} with account ${account.phone_number}`, {
+      source: 'message-routes'
+    });
+    
+    // Try to get the entity
+    let entity;
+    try {
+      entity = await client.getEntity(channel.channel_id);
+      logger.info(`Successfully fetched entity for ${channel.channel_id}: ${JSON.stringify(entity)}`, {
+        source: 'message-routes'
+      });
+    } catch (entityError) {
+      logger.error(`Error getting entity: ${entityError.message}`, {
+        source: 'message-routes'
+      });
+      
+      return res.status(500).json({
+        success: false,
+        message: `Error getting entity: ${entityError.message}`
+      });
+    }
+    
+    // Add a simple event handler to test if we receive any updates
+    const { NewMessage, Raw } = require('telegram/events');
+    
+    // Create a promise that will resolve when we receive an event
+    const testPromise = new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Timeout waiting for events'));
+      }, 10000); // Wait 10 seconds max
+      
+      // Add event handlers for both NewMessage and Raw updates
+      let newMessageHandler, rawHandler;
+      
+      newMessageHandler = (event) => {
+        logger.info(`TEST: Received NewMessage event: ${JSON.stringify({
+          className: event.className,
+          hasMessage: !!event.message,
+          messageId: event.message?.id
+        })}`, {
+          source: 'message-routes'
+        });
+        
+        clearTimeout(timeoutId);
+        client.removeEventHandler(newMessageHandler);
+        client.removeEventHandler(rawHandler);
+        resolve({
+          type: 'NewMessage',
+          data: {
+            messageId: event.message?.id,
+            hasMessage: !!event.message
+          }
+        });
+      };
+      
+      rawHandler = (update) => {
+        logger.info(`TEST: Received Raw update: ${update?.className || 'unknown'}`, {
+          source: 'message-routes'
+        });
+        
+        // We don't resolve for raw updates as they might not be related to our channel
+        // But we log them to see if the client is receiving any updates at all
+      };
+      
+      // Add event handlers
+      client.addEventHandler(newMessageHandler, new NewMessage({
+        chats: [entity.id]
+      }));
+      
+      client.addEventHandler(rawHandler, new Raw({}));
+      
+      logger.info(`Added test event handlers for channel ${channel.channel_id}`, {
+        source: 'message-routes'
+      });
+    });
+    
+    // Return immediately, don't wait for events
+    res.status(200).json({
+      success: true,
+      message: `Started event test for channel ${channel.channel_id} with account ${account.phone_number}. Check logs for updates.`
+    });
+    
+    // Handle the test promise in the background
+    testPromise.then(result => {
+      logger.info(`TEST: Successfully received events: ${JSON.stringify(result)}`, {
+        source: 'message-routes'
+      });
+    }).catch(error => {
+      logger.error(`TEST: Error or timeout waiting for events: ${error.message}`, {
+        source: 'message-routes'
+      });
+    });
+  } catch (error) {
+    logger.error(`Error testing Telegram updates: ${error.message}`, {
+      source: 'message-routes',
+      stack: error.stack
+    });
+    
     return res.status(500).json({
       success: false,
-      message: 'Error getting monitor status',
+      message: 'Error testing Telegram updates',
       error: error.message
     });
   }
