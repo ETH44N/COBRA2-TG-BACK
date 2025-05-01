@@ -19,110 +19,104 @@ const messageQueue = {
 };
 
 /**
- * Process a new message from a channel
- * @param {string} channelId - Channel ID (database ID)
- * @param {Object} message - Telegram message object
- * @param {Object} client - Telegram client
- * @param {string} accountId - Account ID processing this message
+ * Process a new message
  */
 const processNewMessage = async (channelId, message, client, accountId = null) => {
   try {
-    logger.debug(`Processing new message for channel ${channelId}`, {
-      source: 'message-listener',
-      messageId: message.id,
-      accountId
-    });
-    
-    if (!channelId) {
-      throw new Error('Channel ID is required');
-    }
-    
     if (!message || !message.id) {
-      throw new Error('Valid message object with ID is required');
-    }
-    
-    // Get channel from database
-    const channel = await Channel.findById(channelId);
-    if (!channel) {
-      throw new Error(`Channel ${channelId} not found in database`);
+      logger.error('Invalid message object', { 
+        source: 'message-listener',
+        channelId
+      });
+      return;
     }
     
     // Log message details for debugging
-    logger.info(`Message details: ID=${message.id}, Channel=${channel.channel_id}`, {
-      source: 'message-listener',
-      message_type: message.className || 'unknown',
-      has_media: !!message.media,
-      date: message.date
-    });
-    
-    // Check if message already exists
-    const existingMessage = await Message.findOne({
-      message_id: message.id,
-      channel: channelId
-    });
-    
-    if (existingMessage) {
-      logger.debug(`Message ${message.id} already exists, skipping`, {
-        source: 'message-listener'
-      });
-      return existingMessage;
-    }
-    
-    // Extract message content
-    let messageContent = '';
-    if (message.message) {
-      messageContent = message.message.toString().substring(0, 1000);
-    }
-    
-    // Determine message type
-    let messageType = 'text';
-    let mediaType = null;
-    let mediaData = null;
-    
-    if (message.media) {
-      messageType = 'media';
-      mediaType = message.media.className || 'unknown';
-      mediaData = {
-        type: mediaType,
-        // Add appropriate media properties based on type
-      };
-    }
-    
-    // Create message record
-    const newMessage = new Message({
-      message_id: message.id,
-      channel: channelId,
-      content: messageContent,
-      type: messageType,
-      media_type: mediaType,
-      media_data: mediaData,
-      raw_data: JSON.stringify(message),
-      created_at: message.date ? new Date(message.date * 1000) : new Date(),
-      is_active: true
-    });
-    
-    // Save message
-    logger.info(`Saving new message ${message.id} for channel ${channel.channel_id}`, {
+    logger.debug(`Processing new message ${message.id}`, {
+      channelId,
+      messageId: message.id,
+      hasMedia: !!message.media,
       source: 'message-listener'
     });
     
+    // Get the channel from the database
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      logger.error(`Channel not found in database: ${channelId}`, {
+        source: 'message-listener'
+      });
+      return;
+    }
+    
+    // Check if message already exists to avoid duplicates
+    const existingMessage = await Message.findOne({
+      channel_id: channelId,
+      message_id: message.id.toString()
+    });
+    
+    if (existingMessage) {
+      logger.debug(`Message ${message.id} already exists for channel ${channel.channel_id}`, {
+        source: 'message-listener'
+      });
+      return;
+    }
+    
+    // Extract content and determine message type
+    let content = message.text || '';
+    let messageType = 'text';
+    
+    // Handle media content
+    if (message.media) {
+      messageType = 'media';
+      const mediaType = message.media.type || 'unknown';
+      
+      if (message.media.photo) {
+        content = `[Photo: ${message.media.photo.id}]${content ? ' ' + content : ''}`;
+      } else if (message.media.document) {
+        content = `[Document: ${message.media.document.mimeType}]${content ? ' ' + content : ''}`;
+      } else {
+        content = `[Media: ${mediaType}]${content ? ' ' + content : ''}`;
+      }
+    }
+    
+    // Create a new message record
+    const newMessage = new Message({
+      channel_id: channelId,
+      message_id: message.id.toString(),
+      content: content,
+      type: messageType,
+      created_at: new Date(message.date * 1000) || new Date(),
+      is_deleted: false,
+      processed: true,
+      metadata: {
+        raw_text: message.text || '',
+        has_media: !!message.media,
+        media_type: message.media ? message.media.type : null,
+        account_id: accountId
+      }
+    });
+    
+    // Save the message to the database
     await newMessage.save();
     
-    // Update channel last activity
+    // Update channel last_message_at
     await Channel.findByIdAndUpdate(channelId, {
-      last_activity: new Date()
+      last_activity: new Date(),
+      last_message_at: new Date()
+    });
+    
+    logger.info(`Added new message ${message.id} for channel ${channel.channel_id}`, {
+      source: 'message-listener'
     });
     
     return newMessage;
   } catch (error) {
     logger.error(`Error processing new message: ${error.message}`, {
-      source: 'message-listener',
       channelId,
       messageId: message?.id,
-      accountId,
+      source: 'message-listener',
       stack: error.stack
     });
-    
     throw error;
   }
 };
@@ -213,75 +207,148 @@ const processDeletedMessage = async (channelId, messageId, accountId = null) => 
  * @param {Object} messageTask - Task object with message details
  */
 const queueMessageForProcessing = async (messageTask) => {
-  logger.debug(`Queueing message for processing: ${JSON.stringify(messageTask)}`, {
-    source: 'message-listener',
-    accountId: messageTask.accountId,
-    channelId: messageTask.channelId
-  });
-  
-  messageQueue.queue.push(messageTask);
-  
-  // If queue processing isn't already running, start it
-  if (!messageQueue.isProcessing) {
-    processMessageQueue();
+  try {
+    // Add to queue
+    messageQueue.queue.push(messageTask);
+    
+    logger.debug(`Queued ${messageTask.type} message task for processing`, {
+      source: 'message-listener',
+      taskType: messageTask.type,
+      channelId: messageTask.channelId,
+      messageId: messageTask.type === 'new' ? messageTask.message?.id : messageTask.messageId
+    });
+    
+    // Start processing if not already in progress
+    if (!messageQueue.isProcessing) {
+      processMessageQueue();
+    }
+  } catch (error) {
+    logger.error(`Error queuing message: ${error.message}`, {
+      source: 'message-listener',
+      stack: error.stack
+    });
   }
-  
-  return true;
 };
 
 /**
  * Process the message queue with rate limiting
  */
 const processMessageQueue = async () => {
-  if (messageQueue.queue.length === 0) {
+  try {
+    if (messageQueue.isProcessing || messageQueue.queue.length === 0) {
+      return;
+    }
+    
+    messageQueue.isProcessing = true;
+    
+    while (messageQueue.queue.length > 0) {
+      const task = messageQueue.queue.shift();
+      
+      try {
+        // Check rate limit before processing
+        if (task.accountId && checkRateLimit(task.accountId)) {
+          logger.debug(`Rate limit exceeded for account ${task.accountId}, delaying task`, {
+            source: 'message-listener'
+          });
+          
+          // Put back at end of queue
+          messageQueue.queue.push(task);
+          
+          // Wait before checking again
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        
+        // Process based on message type
+        if (task.type === 'new') {
+          // Extract only the necessary data from the message to avoid circular references
+          const extractedMessage = extractMessageData(task.message);
+          await processNewMessage(task.channelId, extractedMessage, task.client, task.accountId);
+        } else if (task.type === 'deleted') {
+          await processDeletedMessage(task.channelId, task.messageId, task.accountId);
+        }
+        
+        // Update rate limit if needed
+        if (task.accountId) {
+          updateRateLimit(task.accountId);
+        }
+      } catch (taskError) {
+        logger.error(`Error processing message task: ${taskError.message}`, {
+          source: 'message-listener',
+          taskType: task.type,
+          channelId: task.channelId,
+          stack: taskError.stack
+        });
+      }
+      
+      // Small delay to avoid overwhelming the system
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
     messageQueue.isProcessing = false;
-    return;
-  }
-  
-  messageQueue.isProcessing = true;
-  
-  while (messageQueue.queue.length > 0) {
-    const task = messageQueue.queue.shift();
-    logger.debug(`Processing queued message task: ${JSON.stringify(task)}`, {
+  } catch (error) {
+    logger.error(`Error in queue processing: ${error.message}`, {
       source: 'message-listener',
-      queueLength: messageQueue.queue.length,
-      taskType: task.type
+      stack: error.stack
+    });
+    messageQueue.isProcessing = false;
+  }
+};
+
+/**
+ * Extract only the necessary data from a message to avoid circular references
+ */
+const extractMessageData = (message) => {
+  if (!message) return null;
+  
+  try {
+    // Create a new object with only the properties we need
+    return {
+      id: message.id,
+      text: message.text || '',
+      date: message.date,
+      peerId: message.peerId ? {
+        channelId: message.peerId.channelId,
+        userId: message.peerId.userId
+      } : null,
+      chatId: message.chatId,
+      fromId: message.fromId,
+      media: message.media ? {
+        // Include minimal info about media to avoid circular refs
+        type: message.media.constructor?.name || 'Unknown',
+        photo: message.media.photo ? {
+          id: message.media.photo.id,
+          accessHash: message.media.photo.accessHash,
+          sizes: Array.isArray(message.media.photo.sizes) ? 
+            message.media.photo.sizes.map(s => ({
+              type: s.type,
+              w: s.w,
+              h: s.h
+            })) : []
+        } : null,
+        document: message.media.document ? {
+          id: message.media.document.id,
+          mimeType: message.media.document.mimeType,
+          size: message.media.document.size
+        } : null
+      } : null,
+      replyTo: message.replyTo ? {
+        replyToMsgId: message.replyTo.replyToMsgId
+      } : null
+    };
+  } catch (error) {
+    logger.error(`Error extracting message data: ${error.message}`, {
+      source: 'message-listener',
+      messageId: message.id,
+      stack: error.stack
     });
     
-    try {
-      // Apply rate limiting
-      const shouldThrottle = checkRateLimit(task.accountId);
-      
-      if (shouldThrottle) {
-        // Put back at the front of the queue
-        messageQueue.queue.unshift(task);
-        
-        // Wait for cooldown period
-        setTimeout(processMessageQueue, RATE_LIMIT.cooldownMs);
-        return;
-      }
-      
-      // Process message based on type
-      if (task.type === 'new') {
-        await processNewMessage(task.channelId, task.message, task.client);
-      } else if (task.type === 'deleted') {
-        await processDeletedMessage(task.channelId, task.messageId);
-      }
-      
-      // Update rate limiting counters
-      updateRateLimit(task.accountId);
-      
-      // Process next message with slight delay
-      setTimeout(processMessageQueue, 50);
-    } catch (error) {
-      logger.error(`Error in message queue processing: ${error.message}`, {
-        source: 'message-listener',
-        context: { error: error.stack, task }
-      });
-      
-      // Continue with next message despite error
-      setTimeout(processMessageQueue, 100);
-    }
+    // Fallback to basic info
+    return {
+      id: message.id,
+      text: typeof message.text === 'string' ? message.text : '[complex content]',
+      date: message.date
+    };
   }
 };
 
@@ -348,11 +415,6 @@ const updateRateLimit = (accountId) => {
 
 /**
  * Fetch message history for a channel
- * @param {string} channelId - Channel ID (database ID)
- * @param {Object} account - Account document
- * @param {Object} client - Telegram client
- * @param {number} limit - Maximum number of messages to fetch
- * @returns {Promise<number>} - Count of processed messages
  */
 const fetchMessageHistory = async (channelId, account, client, limit = 20) => {
   try {
@@ -418,11 +480,14 @@ const fetchMessageHistory = async (channelId, account, client, limit = 20) => {
         });
 
         if (!existingMessage) {
+          // First extract message data to avoid circular references
+          const extractedMessage = extractMessageData(message);
+          
           // Queue the message for processing
           await queueMessageForProcessing({
             type: 'new',
             channelId,
-            message,
+            message: extractedMessage,
             client,
             accountId: account._id.toString()
           });
@@ -431,7 +496,8 @@ const fetchMessageHistory = async (channelId, account, client, limit = 20) => {
       } catch (error) {
         logger.error(`Error processing message ${message.id} from history: ${error.message}`, {
           channelId,
-          source: 'message-listener'
+          source: 'message-listener',
+          stack: error.stack
         });
       }
     }

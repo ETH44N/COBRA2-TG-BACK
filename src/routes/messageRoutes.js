@@ -6,7 +6,7 @@ const Account = require('../models/Account');
 const AccountChannelAssignment = require('../models/AccountChannelAssignment');
 const logger = require('../utils/logger');
 const { activeAccountListeners, channelEntityCache } = require('../services/telegram/channelMonitor');
-const { RATE_LIMIT, messageQueue } = require('../services/telegram/messageListener');
+const { RATE_LIMIT, messageQueue, messageListener } = require('../services/telegram/messageListener');
 
 const router = express.Router();
 
@@ -313,6 +313,28 @@ router.get('/monitor-status', async (req, res) => {
   }
 });
 
+// Helper function to safely log message data without circular references
+const safeLogMessage = (message) => {
+  if (!message) return null;
+  
+  try {
+    return {
+      id: message.id,
+      text: message.text ? (typeof message.text === 'string' ? message.text.substring(0, 100) : '[complex text]') : null,
+      date: message.date,
+      hasMedia: !!message.media,
+      mediaType: message.media ? message.media.constructor?.name : null,
+      chat: message.chat ? {
+        id: message.chat.id,
+        title: message.chat.title
+      } : null
+    };
+  } catch (error) {
+    logger.error(`Error creating safe message log: ${error.message}`);
+    return { id: message.id, error: 'Failed to extract message data' };
+  }
+};
+
 // Add a test endpoint to check Telegram event listening
 router.get('/test-telegram-updates', async (req, res) => {
   try {
@@ -391,11 +413,7 @@ router.get('/test-telegram-updates', async (req, res) => {
       let newMessageHandler, rawHandler;
       
       newMessageHandler = (event) => {
-        logger.info(`TEST: Received NewMessage event: ${JSON.stringify({
-          className: event.className,
-          hasMessage: !!event.message,
-          messageId: event.message?.id
-        })}`, {
+        logger.info(`TEST: Received NewMessage event: ${JSON.stringify(safeLogMessage(event.message))}`, {
           source: 'message-routes'
         });
         
@@ -404,15 +422,12 @@ router.get('/test-telegram-updates', async (req, res) => {
         client.removeEventHandler(rawHandler);
         resolve({
           type: 'NewMessage',
-          data: {
-            messageId: event.message?.id,
-            hasMessage: !!event.message
-          }
+          data: safeLogMessage(event.message)
         });
       };
       
       rawHandler = (update) => {
-        logger.info(`TEST: Received Raw update: ${update?.className || 'unknown'}`, {
+        logger.info(`TEST: Received Raw update: ${safeLogMessage(update?.message) || 'unknown'}`, {
           source: 'message-routes'
         });
         
@@ -548,4 +563,4 @@ router.get('/test-connection', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

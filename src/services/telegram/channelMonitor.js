@@ -641,11 +641,35 @@ const startAccountListener = async (account, channels) => {
             return;
           }
           
+          // Extract necessary message data from the event to avoid circular references
+          const messageData = {
+            id: event.message.id,
+            text: event.message.text || '',
+            date: event.message.date,
+            peerId: event.message.peerId ? {
+              channelId: event.message.peerId.channelId,
+              userId: event.message.peerId.userId
+            } : null,
+            chatId: event.message.chatId,
+            fromId: event.message.fromId,
+            media: event.message.media ? {
+              type: event.message.media.constructor?.name || 'Unknown',
+              photo: event.message.media.photo ? {
+                id: event.message.media.photo.id,
+                accessHash: event.message.media.photo.accessHash,
+              } : null,
+              document: event.message.media.document ? {
+                id: event.message.media.document.id,
+                mimeType: event.message.media.document.mimeType,
+              } : null
+            } : null
+          };
+          
           // Process new message with rate limiting
           await queueMessageForProcessing({
             type: 'new',
             channelId: channelId,
-            message: event.message,
+            message: messageData,
             client,
             accountId: account._id.toString()
           });
