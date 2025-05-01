@@ -587,11 +587,16 @@ const startAccountListener = async (account, channels) => {
     }
     
     // Create event handler for new messages
-    const eventHandler = async (event) => {
+    const newMessageHandler = async (event) => {
       try {
-        logger.debug(`Received event: ${JSON.stringify(event, null, 2)}`, { 
+        logger.debug(`Received NewMessage event: ${JSON.stringify({
+          className: event.className,
+          chatId: event.chatId,
+          senderId: event.senderId,
+          hasMessage: !!event.message,
+          messageId: event.message?.id
+        })}`, { 
           accountId: account._id, 
-          eventType: event ? event.className : 'unknown',
           source: 'channel-monitor'
         });
         
@@ -604,42 +609,45 @@ const startAccountListener = async (account, channels) => {
           peerId = event.message.peerId.channelId.toString();
         } else if (event.message.chatId) {
           peerId = event.message.chatId.toString();
+        } else if (event.chat && event.chat.id) {
+          peerId = event.chat.id.toString();
         }
         
         // Skip if no valid peer ID
-        if (!peerId) return;
+        if (!peerId) {
+          logger.debug(`Skipping message with no peer ID`, {
+            source: 'channel-monitor'
+          });
+          return;
+        }
         
         // Check if this message is from one of our monitored channels
         const channelDbId = channelIdsMap[peerId];
         
         if (channelDbId) {
-          logger.debug(`Received message event from monitored channel (peer ID: ${peerId})`, {
+          logger.info(`Received NEW message event from monitored channel (peer ID: ${peerId}, message ID: ${event.message.id})`, {
             source: 'channel-monitor'
           });
           
-          // Check for deleted messages
-          if (event.message.deleted) {
-            logger.info(`Detected deleted message ${event.message.id}`, {
+          // Skip messages without an ID
+          if (!event.message.id) {
+            logger.warn(`Skipping message without ID`, {
               source: 'channel-monitor'
             });
-            
-            // Process deleted message with rate limiting
-            await processDeletedMessage(channelDbId, event.message.id, account._id.toString());
-          } else {
-            // Skip messages without an ID
-            if (!event.message.id) {
-              logger.warn(`Skipping message without ID`, {
-                source: 'channel-monitor'
-              });
-              return;
-            }
-            
-            // Process new message with rate limiting
-            await processNewMessage(channelDbId, event.message, client, account._id.toString());
+            return;
           }
+          
+          // Process new message with rate limiting
+          await queueMessageForProcessing({
+            type: 'new',
+            channelId: channelDbId,
+            message: event.message,
+            client,
+            accountId: account._id.toString()
+          });
         }
       } catch (error) {
-        logger.error(`Error handling event: ${error.message}`, {
+        logger.error(`Error handling NewMessage event: ${error.message}`, {
           accountId: account._id,
           source: 'channel-monitor',
           stack: error.stack
@@ -647,24 +655,60 @@ const startAccountListener = async (account, channels) => {
       }
     };
     
-    // Add event handler - optionally filter by the channels we're monitoring 
-    // if the library supports it (some Telegram clients do, some don't)
-    try {
-      client.addEventHandler(eventHandler, new NewMessage({
-        chats: telegramChannelIds.length > 0 ? telegramChannelIds : null
-      }));
-    } catch (error) {
-      // If filtered approach fails, fall back to listening to all messages
-      logger.warn(`Could not set up filtered event handler, falling back to unfiltered: ${error.message}`, {
-        source: 'channel-monitor'
-      });
-      client.addEventHandler(eventHandler, new NewMessage({}));
-    }
+    // Create handler for raw updates (to catch deletions)
+    const rawUpdateHandler = async (update) => {
+      try {
+        logger.debug(`Received Raw update: ${update?.className || 'unknown'}`, { 
+          accountId: account._id,
+          source: 'channel-monitor'
+        });
+        
+        // Check for deleted messages
+        if (update?.className === 'UpdateDeleteChannelMessages') {
+          const channelId = update.channelId?.toString();
+          if (!channelId) return;
+          
+          const channelDbId = channelIdsMap[channelId];
+          if (!channelDbId) return;
+          
+          logger.info(`Detected DELETED messages in channel ${channelId}: ${JSON.stringify(update.messages)}`, {
+            source: 'channel-monitor'
+          });
+          
+          // Process each deleted message ID
+          for (const messageId of update.messages) {
+            await queueMessageForProcessing({
+              type: 'deleted',
+              channelId: channelDbId,
+              messageId,
+              accountId: account._id.toString()
+            });
+          }
+        }
+      } catch (error) {
+        logger.error(`Error handling Raw update: ${error.message}`, {
+          accountId: account._id,
+          source: 'channel-monitor',
+          stack: error.stack
+        });
+      }
+    };
+    
+    // Register both event handlers
+    const { NewMessage, Raw } = require('telegram/events');
+    
+    // Add event handler for new messages 
+    client.addEventHandler(newMessageHandler, new NewMessage({
+      chats: telegramChannelIds.length > 0 ? telegramChannelIds : null
+    }));
+    
+    // Add raw event handler for catching message deletions
+    client.addEventHandler(rawUpdateHandler, new Raw({}));
     
     // Store listener
     activeAccountListeners.set(account._id.toString(), {
       client,
-      eventHandler,
+      handlers: [newMessageHandler, rawUpdateHandler],
       channelIds: channels.map(c => c._id.toString())
     });
     
@@ -686,7 +730,7 @@ const startAccountListener = async (account, channels) => {
   } catch (error) {
     logger.error(`Error starting account listener: ${error.message}`, {
       source: 'channel-monitor',
-      context: { error: error.stack }
+      stack: error.stack
     });
     throw error;
   }
@@ -718,6 +762,7 @@ const getChannelEntity = async (channelId, client) => {
   }
 };
 
+// Export module
 module.exports = {
   addChannel,
   reassignChannel,
@@ -728,4 +773,7 @@ module.exports = {
   getChannelEntity,
   activeAccountListeners,
   channelEntityCache
-}; 
+};
+
+// Also export the entire module as channelMonitor for direct access
+module.exports.channelMonitor = module.exports; 

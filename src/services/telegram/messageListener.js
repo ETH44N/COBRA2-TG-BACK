@@ -37,114 +37,92 @@ const processNewMessage = async (channelId, message, client, accountId = null) =
       throw new Error('Channel ID is required');
     }
     
-    // Get channel from database to ensure it exists
+    if (!message || !message.id) {
+      throw new Error('Valid message object with ID is required');
+    }
+    
+    // Get channel from database
     const channel = await Channel.findById(channelId);
     if (!channel) {
-      throw new Error(`Channel with ID ${channelId} not found`);
+      throw new Error(`Channel ${channelId} not found in database`);
     }
     
-    // Skip messages without an ID
-    if (!message.id) {
-      logger.warn(`Skipping message without ID in channel ${channel.channel_id}`, {
-        source: 'message-listener',
-        context: { messageData: JSON.stringify(message) }
-      });
-      return null;
-    }
-    
-    logger.debug(`Processing new message in channel ${channel.channel_id}`, {
+    // Log message details for debugging
+    logger.info(`Message details: ID=${message.id}, Channel=${channel.channel_id}`, {
       source: 'message-listener',
-      message_id: message.id
+      message_type: message.className || 'unknown',
+      has_media: !!message.media,
+      date: message.date
     });
     
-    // Extract message data
-    const messageData = {
-      channel_id: channelId,
-      message_id: message.id,
-      sender_id: message.senderId ? message.senderId.toString() : null,
-      sender_name: message.sender ? (message.sender.username || message.sender.firstName || 'Unknown') : 'Unknown',
-      text: message.text || '',
-      raw_data: JSON.stringify(message),
-      date: new Date(message.date * 1000), // Convert Unix timestamp to Date
-      is_deleted: false
-    };
-    
-    // Check for media
-    if (message.media) {
-      messageData.has_media = true;
-      
-      // Determine media type
-      if (message.media.photo) {
-        messageData.media_type = 'photo';
-      } else if (message.media.document) {
-        messageData.media_type = 'document';
-      } else if (message.media.video) {
-        messageData.media_type = 'video';
-      } else if (message.media.audio) {
-        messageData.media_type = 'audio';
-      } else {
-        messageData.media_type = 'other';
-      }
-      
-      // Try to get media URL if available
-      try {
-        if (client && message.media.photo) {
-          // For photos, get the largest size
-          const photo = message.media.photo;
-          const fileLocation = photo.sizes[photo.sizes.length - 1].location;
-          
-          // Download or get URL
-          // This is a placeholder - actual implementation depends on Telegram client capabilities
-          // messageData.media_url = await client.getFileUrl(fileLocation);
-        }
-      } catch (error) {
-        logger.warn(`Could not get media URL for message ${message.id}: ${error.message}`, {
-          source: 'message-listener'
-        });
-      }
-    }
-    
-    // Check if this message already exists to avoid duplicates
+    // Check if message already exists
     const existingMessage = await Message.findOne({
-      channel_id: channelId,
-      message_id: message.id
+      message_id: message.id,
+      channel: channelId
     });
     
     if (existingMessage) {
-      logger.debug(`Message ${message.id} already exists in channel ${channel.channel_id}, skipping`, {
+      logger.debug(`Message ${message.id} already exists, skipping`, {
         source: 'message-listener'
       });
       return existingMessage;
     }
     
-    // Save to database - use findOneAndUpdate with upsert to avoid duplicates
-    const savedMessage = await Message.findOneAndUpdate(
-      { channel_id: channelId, message_id: message.id },
-      messageData,
-      { upsert: true, new: true }
-    );
+    // Extract message content
+    let messageContent = '';
+    if (message.message) {
+      messageContent = message.message.toString().substring(0, 1000);
+    }
     
-    logger.info(`Saved message ${savedMessage.message_id} from channel ${channel.channel_id}`, {
-      source: 'message-listener',
-      message_id: savedMessage.message_id
+    // Determine message type
+    let messageType = 'text';
+    let mediaType = null;
+    let mediaData = null;
+    
+    if (message.media) {
+      messageType = 'media';
+      mediaType = message.media.className || 'unknown';
+      mediaData = {
+        type: mediaType,
+        // Add appropriate media properties based on type
+      };
+    }
+    
+    // Create message record
+    const newMessage = new Message({
+      message_id: message.id,
+      channel: channelId,
+      content: messageContent,
+      type: messageType,
+      media_type: mediaType,
+      media_data: mediaData,
+      raw_data: JSON.stringify(message),
+      created_at: message.date ? new Date(message.date * 1000) : new Date(),
+      is_active: true
     });
     
-    // Send webhook notification
-    await sendWebhookNotification('new_message', {
-      channel_id: channel.channel_id,
-      message_id: savedMessage.message_id,
-      text: savedMessage.text,
-      sender: savedMessage.sender_name,
-      has_media: savedMessage.has_media,
-      media_type: savedMessage.media_type
+    // Save message
+    logger.info(`Saving new message ${message.id} for channel ${channel.channel_id}`, {
+      source: 'message-listener'
     });
     
-    return savedMessage;
+    await newMessage.save();
+    
+    // Update channel last activity
+    await Channel.findByIdAndUpdate(channelId, {
+      last_activity: new Date()
+    });
+    
+    return newMessage;
   } catch (error) {
-    logger.error(`Error processing new message in channel ${channelId}: ${error.message}`, {
+    logger.error(`Error processing new message: ${error.message}`, {
       source: 'message-listener',
-      context: { error: error.stack }
+      channelId,
+      messageId: message?.id,
+      accountId,
+      stack: error.stack
     });
+    
     throw error;
   }
 };

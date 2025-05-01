@@ -179,4 +179,118 @@ router.get('/diagnostics', async (req, res) => {
   }
 });
 
+// Test endpoint to add a message manually for testing
+router.post('/test-message', async (req, res) => {
+  try {
+    const { channelId, messageId, content } = req.body;
+    
+    if (!channelId || !messageId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Channel ID and message ID are required'
+      });
+    }
+    
+    // Get channel
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: `Channel with ID ${channelId} not found`
+      });
+    }
+    
+    // Create test message
+    const testMessage = new Message({
+      message_id: messageId,
+      channel: channelId,
+      content: content || 'Test message content',
+      type: 'text',
+      created_at: new Date(),
+      is_active: true
+    });
+    
+    await testMessage.save();
+    
+    logger.info(`Added test message ${messageId} for channel ${channel.channel_id}`, {
+      source: 'message-routes'
+    });
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Test message added successfully',
+      data: testMessage
+    });
+  } catch (error) {
+    logger.error(`Error adding test message: ${error.message}`, {
+      source: 'message-routes',
+      stack: error.stack
+    });
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Error adding test message',
+      error: error.message
+    });
+  }
+});
+
+// Get event monitoring status
+router.get('/monitor-status', async (req, res) => {
+  try {
+    const { channelMonitor } = require('../services/telegram/channelMonitor');
+    const { RATE_LIMIT, messageQueue } = require('../services/telegram/messageListener');
+    
+    // Get active accounts and their listeners
+    const accounts = await Account.find({ status: 'active' }).lean();
+    const activeListeners = [];
+    
+    for (const account of accounts) {
+      const accountId = account._id.toString();
+      const hasListener = channelMonitor && channelMonitor.activeAccountListeners && 
+                        channelMonitor.activeAccountListeners.has(accountId);
+                        
+      activeListeners.push({
+        account_id: accountId,
+        phone: account.phone_number,
+        has_active_listener: hasListener,
+        monitored_channels: hasListener ? 
+          channelMonitor.activeAccountListeners.get(accountId).channelIds.length : 0
+      });
+    }
+    
+    // Get rate limits and queue status
+    const rateLimit = {
+      accounts: Object.keys(RATE_LIMIT.accounts).length,
+      details: RATE_LIMIT.accounts
+    };
+    
+    const queue = {
+      length: messageQueue.queue.length,
+      is_processing: messageQueue.isProcessing
+    };
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        active_listeners: activeListeners,
+        rate_limit: rateLimit,
+        queue: queue,
+        total_entity_cache: channelMonitor ? channelMonitor.channelEntityCache.size : 0
+      }
+    });
+  } catch (error) {
+    logger.error(`Error getting monitor status: ${error.message}`, {
+      source: 'message-routes',
+      stack: error.stack
+    });
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Error getting monitor status',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router; 
