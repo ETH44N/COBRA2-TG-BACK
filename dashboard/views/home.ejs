@@ -319,6 +319,121 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('refresh-stats').addEventListener('click', function() {
         location.reload();
     });
+
+    // Add auto-refresh for message statistics
+    function updateMessageStats() {
+        fetch('/api/messages/stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update message counts
+                    const messageCardsHeaders = document.querySelectorAll('.card-header h5');
+                    messageCardsHeaders.forEach(header => {
+                        if (header.textContent.trim() === 'Messages') {
+                            const badge = header.closest('.card-header').querySelector('.badge');
+                            if (badge) {
+                                badge.textContent = data.stats.total;
+                            }
+                        }
+                    });
+
+                    // Update active and deleted message counts
+                    const messageCards = document.querySelectorAll('.card');
+                    messageCards.forEach(card => {
+                        const header = card.querySelector('.card-header h5');
+                        if (header && header.textContent.trim() === 'Messages') {
+                            const activeMessagesElement = card.querySelector('.badge.bg-success');
+                            const deletedMessagesElement = card.querySelector('.badge.bg-danger');
+                            
+                            if (activeMessagesElement) {
+                                activeMessagesElement.textContent = data.stats.active;
+                            }
+                            
+                            if (deletedMessagesElement) {
+                                deletedMessagesElement.textContent = data.stats.deleted;
+                            }
+                        }
+                    });
+
+                    // Update message chart if exists
+                    if (window.messageChart) {
+                        window.messageChart.data.datasets[0].data = [data.stats.active, data.stats.deleted];
+                        window.messageChart.update();
+                    }
+
+                    // Update recent messages table
+                    const tables = document.querySelectorAll('table');
+                    tables.forEach(table => {
+                        const channelHeader = table.querySelector('th');
+                        if (channelHeader && channelHeader.textContent.trim() === 'Channel') {
+                            const tableBody = table.querySelector('tbody');
+                            if (tableBody && data.recentMessages && data.recentMessages.length > 0) {
+                                let tableHtml = '';
+                                data.recentMessages.forEach(message => {
+                                    const content = message.content ? (message.content.substring(0, 50) + (message.content.length > 50 ? '...' : '')) : '<no content>';
+                                    tableHtml += `
+                                        <tr>
+                                            <td>
+                                                <a href="/channels/${message.channelId}">
+                                                    ${message.channelName}
+                                                </a>
+                                            </td>
+                                            <td>
+                                                ${moment(message.date).format('YYYY-MM-DD HH:mm:ss')}
+                                            </td>
+                                            <td>
+                                                ${content}
+                                            </td>
+                                            <td>
+                                                <span class="badge ${message.isDeleted ? 'bg-danger' : 'bg-success'}">
+                                                    ${message.isDeleted ? 'Deleted' : 'Active'}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    `;
+                                });
+                                tableBody.innerHTML = tableHtml;
+                            }
+                        }
+                    });
+
+                    console.log('Message statistics updated successfully');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating message statistics:', error);
+            });
+    }
+
+    // Store reference to message chart
+    const messageCtx = document.getElementById('messagesChart').getContext('2d');
+    window.messageChart = new Chart(messageCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Active', 'Deleted'],
+            datasets: [{
+                data: [
+                    <%= messageStats.active || 0 %>, 
+                    <%= messageStats.deleted || 0 %>
+                ],
+                backgroundColor: ['#198754', '#dc3545'],
+                borderWidth: 1
+            }]
+        },
+        options: {
+            cutout: '70%',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+
+    // Auto-refresh message stats every 30 seconds
+    setInterval(updateMessageStats, 30000);
 });
 
 // Helper function to format uptime for EJS

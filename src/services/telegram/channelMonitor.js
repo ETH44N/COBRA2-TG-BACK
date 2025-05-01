@@ -4,12 +4,18 @@ const Account = require('../../models/Account');
 const { getClient } = require('./client');
 const { getLeastLoadedAccount, updateAccountChannelCount } = require('./accountManager');
 const logger = require('../../utils/logger');
-const { processNewMessage, processDeletedMessage } = require('./messageListener');
+const { processNewMessage, processDeletedMessage, queueMessageForProcessing } = require('./messageListener');
 const { NewMessage } = require('telegram/events');
 const { getBestAccountForNewChannel } = require('./accountManager');
 
-// Store active channel listeners
+// Store active account listeners
+const activeAccountListeners = new Map();
+// Store active channel listeners (will be deprecated)
 const activeListeners = new Map();
+// Store mapping of account ID to array of channel IDs they're monitoring
+const accountChannelMap = new Map();
+// Cache for channel entities to avoid repeated getEntity calls
+const channelEntityCache = new Map();
 
 /**
  * Initialize channel monitoring
@@ -17,6 +23,11 @@ const activeListeners = new Map();
  */
 const initializeChannelMonitoring = async () => {
   try {
+    // Clear any existing state
+    activeAccountListeners.clear();
+    accountChannelMap.clear();
+    channelEntityCache.clear();
+    
     // Get all channel assignments
     const assignments = await AccountChannelAssignment.find({})
       .populate('channel_id')
@@ -33,23 +44,48 @@ const initializeChannelMonitoring = async () => {
       source: 'channel-monitor'
     });
     
-    // Start monitoring each channel
+    // Group assignments by account
+    const accountAssignments = {};
+    
     for (const assignment of assignments) {
-      try {
-        if (assignment.account_id.status !== 'active') {
-          logger.warn(`Skipping channel ${assignment.channel_id.channel_id} as assigned account ${assignment.account_id.phone_number} is not active`, {
-            source: 'channel-monitor'
-          });
-          continue;
+      const accountId = assignment.account_id._id.toString();
+      if (!accountAssignments[accountId]) {
+        accountAssignments[accountId] = [];
+      }
+      
+      accountAssignments[accountId].push(assignment);
+    }
+    
+    // Start monitoring for each account
+    for (const [accountId, accountAssignmentsList] of Object.entries(accountAssignments)) {
+      const account = accountAssignmentsList[0].account_id;
+      
+      if (account.status !== 'active') {
+        logger.warn(`Skipping account ${account.phone_number} as it is not active`, {
+          source: 'channel-monitor'
+        });
+        continue;
+      }
+      
+      // Set up the map of channels monitored by this account
+      const channelIds = [];
+      for (const assignment of accountAssignmentsList) {
+        if (assignment.channel_id) {
+          channelIds.push(assignment.channel_id._id.toString());
         }
+      }
+      
+      accountChannelMap.set(accountId, channelIds);
+      
+      // Start a single listener for all channels assigned to this account
+      try {
+        await startAccountListener(account, accountAssignmentsList.map(a => a.channel_id));
         
-        await startListening(assignment.channel_id, assignment.account_id);
-        
-        logger.info(`Started monitoring channel ${assignment.channel_id.channel_id} with account ${assignment.account_id.phone_number}`, {
+        logger.info(`Started monitoring ${channelIds.length} channels with account ${account.phone_number}`, {
           source: 'channel-monitor'
         });
       } catch (error) {
-        logger.error(`Failed to start monitoring channel ${assignment.channel_id.channel_id}: ${error.message}`, {
+        logger.error(`Failed to start account listener for ${account.phone_number}: ${error.message}`, {
           source: 'channel-monitor',
           context: { error: error.stack }
         });
@@ -103,6 +139,13 @@ const addChannel = async (channelId) => {
       if (existingAssignment && existingAssignment.account_id._id.toString() !== account._id.toString()) {
         await AccountChannelAssignment.findByIdAndDelete(existingAssignment._id);
         await updateAccountChannelCount(existingAssignment.account_id._id, -1);
+        
+        // Remove from the account's channel map if it exists
+        if (accountChannelMap.has(existingAssignment.account_id._id.toString())) {
+          const channelList = accountChannelMap.get(existingAssignment.account_id._id.toString());
+          const filteredList = channelList.filter(id => id !== channel._id.toString());
+          accountChannelMap.set(existingAssignment.account_id._id.toString(), filteredList);
+        }
       }
       
       // Join channel and update details if not active
@@ -120,10 +163,46 @@ const addChannel = async (channelId) => {
         
         // Update account channel count
         await updateAccountChannelCount(account._id, 1);
+        
+        // Add to the account's channel map
+        if (!accountChannelMap.has(account._id.toString())) {
+          accountChannelMap.set(account._id.toString(), []);
+        }
+        accountChannelMap.get(account._id.toString()).push(channel._id.toString());
       }
       
-      // Start listening for messages
-      await startListening(channel, account);
+      // Update active account listener or start a new one
+      if (activeAccountListeners.has(account._id.toString())) {
+        // Get the channel entity and add to cache
+        const client = activeAccountListeners.get(account._id.toString()).client;
+        try {
+          const entity = await client.getEntity(channel.channel_id);
+          channelEntityCache.set(channel.channel_id, entity);
+          
+          // Add to listener's channel IDs
+          const listener = activeAccountListeners.get(account._id.toString());
+          if (!listener.channelIds.includes(channel._id.toString())) {
+            listener.channelIds.push(channel._id.toString());
+          }
+          
+          // Mark channel as active
+          await Channel.findByIdAndUpdate(channel._id, {
+            is_active: true,
+            last_checked: new Date()
+          });
+        } catch (error) {
+          logger.error(`Error updating active listener for channel ${channel.channel_id}: ${error.message}`, {
+            source: 'channel-monitor',
+            context: { error: error.stack }
+          });
+        }
+      } else {
+        // Start a new listener for this account
+        const channels = await Channel.find({
+          _id: { $in: accountChannelMap.get(account._id.toString()) || [] }
+        });
+        await startAccountListener(account, channels);
+      }
       
       logger.info(`Started monitoring existing channel ${channelId} with account ${account.phone_number}`, {
         source: 'channel-monitor'
@@ -161,8 +240,41 @@ const addChannel = async (channelId) => {
     // Update account channel count
     await updateAccountChannelCount(account._id, 1);
     
-    // Start listening for messages
-    await startListening(channel, account);
+    // Add to account channel map
+    if (!accountChannelMap.has(account._id.toString())) {
+      accountChannelMap.set(account._id.toString(), []);
+    }
+    accountChannelMap.get(account._id.toString()).push(channel._id.toString());
+    
+    // Update active listener or start a new one
+    if (activeAccountListeners.has(account._id.toString())) {
+      // Get the channel entity and add to cache
+      const client = activeAccountListeners.get(account._id.toString()).client;
+      try {
+        const entity = await client.getEntity(channel.channel_id);
+        channelEntityCache.set(channel.channel_id, entity);
+        
+        // Add to listener's channel IDs
+        const listener = activeAccountListeners.get(account._id.toString());
+        if (!listener.channelIds.includes(channel._id.toString())) {
+          listener.channelIds.push(channel._id.toString());
+        }
+        
+        // Mark channel as active
+        await Channel.findByIdAndUpdate(channel._id, {
+          is_active: true,
+          last_checked: new Date()
+        });
+      } catch (error) {
+        logger.error(`Error updating active listener for channel ${channel.channel_id}: ${error.message}`, {
+          source: 'channel-monitor',
+          context: { error: error.stack }
+        });
+      }
+    } else {
+      // Start a new listener for this account
+      await startAccountListener(account, [channel]);
+    }
     
     logger.info(`Added new channel ${channelId} and assigned to account ${account.phone_number}`, {
       source: 'channel-monitor'
@@ -191,46 +303,90 @@ const reassignChannel = async (channel) => {
     }).populate('account_id');
     
     if (currentAssignment) {
-      // Stop current listener
-      const listenerKey = channel._id.toString();
-      if (activeListeners.has(listenerKey)) {
-        const { client, eventHandler } = activeListeners.get(listenerKey);
-        client.removeEventHandler(eventHandler);
-        activeListeners.delete(listenerKey);
-        
-        logger.info(`Stopped listening to channel ${channel.channel_id} with account ${currentAssignment.account_id.phone_number}`, {
-          source: 'channel-monitor'
-        });
+      const oldAccountId = currentAssignment.account_id._id.toString();
+      
+      // Remove channel from the old account's map
+      if (accountChannelMap.has(oldAccountId)) {
+        const channelIds = accountChannelMap.get(oldAccountId);
+        const updatedChannelIds = channelIds.filter(id => id !== channel._id.toString());
+        accountChannelMap.set(oldAccountId, updatedChannelIds);
       }
       
-      // Update account channel count
-      await updateAccountChannelCount(currentAssignment.account_id._id, -1);
+      // Delete the assignment
+      await AccountChannelAssignment.findByIdAndDelete(currentAssignment._id);
+      
+      // Update old account's channel count
+      await updateAccountChannelCount(oldAccountId, -1);
     }
     
-    // Get new account
+    // Get best account for reassignment
     const newAccount = await getLeastLoadedAccount();
     
-    // Create or update assignment
-    const assignment = await AccountChannelAssignment.findOneAndUpdate(
-      { channel_id: channel._id },
-      {
-        account_id: newAccount._id,
-        assigned_at: new Date()
-      },
-      { upsert: true, new: true }
-    );
+    // Create new assignment
+    const newAssignment = await AccountChannelAssignment.create({
+      account_id: newAccount._id,
+      channel_id: channel._id,
+      assigned_at: new Date(),
+      status: 'active'
+    });
     
-    // Update account channel count
+    // Add to account channel map
+    if (!accountChannelMap.has(newAccount._id.toString())) {
+      accountChannelMap.set(newAccount._id.toString(), []);
+    }
+    accountChannelMap.get(newAccount._id.toString()).push(channel._id.toString());
+    
+    // Update new account's channel count
     await updateAccountChannelCount(newAccount._id, 1);
     
-    // Start listening with new account
-    await startListening(channel, newAccount);
+    // Attempt to join channel with new account if not already joined
+    try {
+      await joinChannel(channel, newAccount);
+    } catch (error) {
+      logger.warn(`Channel ${channel.channel_id} join failed during reassignment: ${error.message}`, {
+        source: 'channel-monitor'
+      });
+    }
     
-    logger.info(`Reassigned channel ${channel.channel_id} to account ${newAccount.phone_number}`, {
+    // Update active listener or start a new one for the new account
+    if (activeAccountListeners.has(newAccount._id.toString())) {
+      // Get the channel entity and add to cache
+      const client = activeAccountListeners.get(newAccount._id.toString()).client;
+      try {
+        const entity = await client.getEntity(channel.channel_id);
+        channelEntityCache.set(channel.channel_id, entity);
+        
+        // Add to listener's channel IDs
+        const listener = activeAccountListeners.get(newAccount._id.toString());
+        if (!listener.channelIds.includes(channel._id.toString())) {
+          listener.channelIds.push(channel._id.toString());
+        }
+        
+        logger.info(`Added channel ${channel.channel_id} to existing listener for account ${newAccount.phone_number}`, {
+          source: 'channel-monitor'
+        });
+      } catch (error) {
+        logger.error(`Error updating active listener during reassignment: ${error.message}`, {
+          source: 'channel-monitor',
+          context: { error: error.stack }
+        });
+      }
+    } else {
+      // Start a new listener for this account
+      await startAccountListener(newAccount, [channel]);
+    }
+    
+    logger.info(`Reassigned channel ${channel.channel_id} from account ${currentAssignment ? currentAssignment.account_id.phone_number : 'none'} to ${newAccount.phone_number}`, {
       source: 'channel-monitor'
     });
     
-    return assignment;
+    // Mark channel as active
+    await Channel.findByIdAndUpdate(channel._id, {
+      is_active: true,
+      last_checked: new Date()
+    });
+    
+    return newAssignment;
   } catch (error) {
     logger.error(`Error reassigning channel ${channel.channel_id}: ${error.message}`, {
       source: 'channel-monitor',
@@ -388,10 +544,181 @@ const startListening = async (channel, account) => {
   }
 };
 
+/**
+ * Start listening for messages for all channels assigned to an account
+ * @param {Object} account - Account document
+ * @param {Array} channels - Array of channel documents
+ */
+const startAccountListener = async (account, channels) => {
+  try {
+    // Get client for account
+    const client = await getClient(account);
+    
+    // Skip if already listening for this account
+    if (activeAccountListeners.has(account._id.toString())) {
+      logger.info(`Account ${account.phone_number} already has an active listener`, {
+        source: 'channel-monitor'
+      });
+      return;
+    }
+    
+    // Create channel ID map for quick lookups
+    const channelIdsMap = {};
+    const telegramChannelIds = [];
+    
+    for (const channel of channels) {
+      if (channel && channel.channel_id) {
+        // Cache channel entity
+        try {
+          const entity = await client.getEntity(channel.channel_id);
+          channelEntityCache.set(channel.channel_id, entity);
+          
+          // Store the numeric/internal Telegram ID if available
+          if (entity && entity.id) {
+            channelIdsMap[entity.id.toString()] = channel._id.toString();
+            telegramChannelIds.push(entity.id);
+          }
+        } catch (error) {
+          logger.warn(`Could not get entity for channel ${channel.channel_id}: ${error.message}`, {
+            source: 'channel-monitor'
+          });
+        }
+      }
+    }
+    
+    // Create event handler for new messages
+    const eventHandler = async (event) => {
+      try {
+        if (!event.message) return;
+        
+        // Get relevant IDs from the message event
+        let peerId = null;
+        
+        if (event.message.peerId && event.message.peerId.channelId) {
+          peerId = event.message.peerId.channelId.toString();
+        } else if (event.message.chatId) {
+          peerId = event.message.chatId.toString();
+        }
+        
+        // Skip if no valid peer ID
+        if (!peerId) return;
+        
+        // Check if this message is from one of our monitored channels
+        const channelDbId = channelIdsMap[peerId];
+        
+        if (channelDbId) {
+          logger.debug(`Received message event from monitored channel (peer ID: ${peerId})`, {
+            source: 'channel-monitor'
+          });
+          
+          // Check for deleted messages
+          if (event.message.deleted) {
+            logger.info(`Detected deleted message ${event.message.id}`, {
+              source: 'channel-monitor'
+            });
+            
+            // Process deleted message with rate limiting
+            await processDeletedMessage(channelDbId, event.message.id, account._id.toString());
+          } else {
+            // Skip messages without an ID
+            if (!event.message.id) {
+              logger.warn(`Skipping message without ID`, {
+                source: 'channel-monitor'
+              });
+              return;
+            }
+            
+            // Process new message with rate limiting
+            await processNewMessage(channelDbId, event.message, client, account._id.toString());
+          }
+        }
+      } catch (error) {
+        logger.error(`Error processing message event: ${error.message}`, {
+          source: 'channel-monitor',
+          context: { error: error.stack }
+        });
+      }
+    };
+    
+    // Add event handler - optionally filter by the channels we're monitoring 
+    // if the library supports it (some Telegram clients do, some don't)
+    try {
+      client.addEventHandler(eventHandler, new NewMessage({
+        chats: telegramChannelIds.length > 0 ? telegramChannelIds : null
+      }));
+    } catch (error) {
+      // If filtered approach fails, fall back to listening to all messages
+      logger.warn(`Could not set up filtered event handler, falling back to unfiltered: ${error.message}`, {
+        source: 'channel-monitor'
+      });
+      client.addEventHandler(eventHandler, new NewMessage({}));
+    }
+    
+    // Store listener
+    activeAccountListeners.set(account._id.toString(), {
+      client,
+      eventHandler,
+      channelIds: channels.map(c => c._id.toString())
+    });
+    
+    logger.info(`Started account listener for ${account.phone_number} monitoring ${channels.length} channels`, {
+      source: 'channel-monitor'
+    });
+    
+    // Update account and channels
+    await Account.findByIdAndUpdate(account._id, {
+      last_active: new Date()
+    });
+    
+    for (const channel of channels) {
+      await Channel.findByIdAndUpdate(channel._id, {
+        last_checked: new Date(),
+        is_active: true
+      });
+    }
+  } catch (error) {
+    logger.error(`Error starting account listener: ${error.message}`, {
+      source: 'channel-monitor',
+      context: { error: error.stack }
+    });
+    throw error;
+  }
+};
+
+/**
+ * Get cached channel entity or fetch it if not available
+ * @param {string} channelId - Telegram channel ID
+ * @param {Object} client - Telegram client
+ * @returns {Promise<Object>} - Channel entity
+ */
+const getChannelEntity = async (channelId, client) => {
+  // Check cache first
+  if (channelEntityCache.has(channelId)) {
+    return channelEntityCache.get(channelId);
+  }
+  
+  // If not in cache, fetch it
+  try {
+    const entity = await client.getEntity(channelId);
+    // Store in cache
+    channelEntityCache.set(channelId, entity);
+    return entity;
+  } catch (error) {
+    logger.error(`Error fetching channel entity for ${channelId}: ${error.message}`, {
+      source: 'channel-monitor'
+    });
+    throw error;
+  }
+};
+
 module.exports = {
   addChannel,
   reassignChannel,
   initializeChannelMonitoring,
   joinChannel,
-  startListening
+  startListening,
+  startAccountListener,
+  getChannelEntity,
+  activeAccountListeners,
+  channelEntityCache
 }; 

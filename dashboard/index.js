@@ -651,6 +651,176 @@ app.get('/api/channels/status', async (req, res) => {
   }
 });
 
+// Add new API endpoint for message statistics
+app.get('/api/messages/stats', async (req, res) => {
+  try {
+    // Get fresh message statistics from database
+    const totalMessages = await Message.countDocuments();
+    const deletedMessages = await Message.countDocuments({ is_deleted: true });
+    
+    // Get recent messages
+    const recentMessages = await Message.find()
+      .sort({ created_at: -1 })
+      .limit(10)
+      .populate('channel_id')
+      .lean();
+    
+    // Format recent messages for display
+    const formattedRecentMessages = recentMessages.map(msg => {
+      return {
+        id: msg._id,
+        channelId: msg.channel_id ? msg.channel_id._id : null,
+        channelName: msg.channel_id ? (msg.channel_id.name || msg.channel_id.username || msg.channel_id.channel_id) : 'Unknown',
+        content: msg.text || msg.content || '',
+        date: msg.created_at || msg.date,
+        isDeleted: msg.is_deleted
+      };
+    });
+    
+    res.json({
+      success: true,
+      stats: {
+        total: totalMessages,
+        deleted: deletedMessages,
+        active: totalMessages - deletedMessages
+      },
+      recentMessages: formattedRecentMessages
+    });
+  } catch (error) {
+    console.error('Error fetching message statistics:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch message statistics',
+      message: error.message
+    });
+  }
+});
+
+// Diagnostics page
+app.get('/diagnostics', async (req, res) => {
+  try {
+    // Get connection status and database info
+    const systemInfo = {
+      uptime: Math.floor(process.uptime()),
+      nodeVersion: process.version,
+      timestamp: new Date()
+    };
+    
+    res.render('diagnostics', {
+      title: 'System Diagnostics',
+      active: 'diagnostics',
+      systemInfo
+    });
+  } catch (error) {
+    console.error('Error loading diagnostics page:', error);
+    res.render('error', {
+      message: 'Failed to load diagnostics',
+      error: error,
+      title: 'Error',
+      active: ''
+    });
+  }
+});
+
+// Add diagnostic endpoint to check message collection
+app.get('/api/diagnostic/messages', async (req, res) => {
+  try {
+    // Direct MongoDB client for diagnostic purposes
+    const client = new MongoClient(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    
+    await client.connect();
+    const db = client.db();
+    
+    // Get message collection stats
+    const messagesCollectionExists = await db.listCollections({ name: 'messages' }).hasNext();
+    let result = {
+      collectionExists: messagesCollectionExists,
+      mongoose: {
+        count: 0,
+        sample: []
+      },
+      direct: {
+        count: 0,
+        sample: [],
+        fields: {}
+      }
+    };
+    
+    // Try counting with Mongoose
+    try {
+      result.mongoose.count = await Message.countDocuments();
+      result.mongoose.sample = await Message.find().limit(5).lean();
+    } catch (err) {
+      result.mongoose.error = err.message;
+    }
+    
+    // Try counting directly with MongoDB driver
+    if (messagesCollectionExists) {
+      try {
+        result.direct.count = await db.collection('messages').countDocuments();
+        result.direct.sample = await db.collection('messages').find().limit(5).toArray();
+        
+        // Analyze what fields exist in the collection
+        if (result.direct.sample.length > 0) {
+          const allFields = new Set();
+          result.direct.sample.forEach(doc => {
+            Object.keys(doc).forEach(key => allFields.add(key));
+          });
+          
+          // Count how many documents have each field
+          for (const field of allFields) {
+            const fieldCount = await db.collection('messages').countDocuments({ [field]: { $exists: true } });
+            result.direct.fields[field] = fieldCount;
+          }
+        }
+      } catch (err) {
+        result.direct.error = err.message;
+      }
+    }
+    
+    // Get channel and account counts for context
+    try {
+      result.channelCount = await Channel.countDocuments();
+      result.accountCount = await Account.countDocuments();
+    } catch (err) {
+      result.countError = err.message;
+    }
+    
+    // Check message listener status by crawling logs
+    try {
+      const recentLogs = await db.collection('logs').find({
+        source: 'message-listener',
+        timestamp: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+      }).sort({ timestamp: -1 }).limit(50).toArray();
+      
+      result.logs = {
+        count: recentLogs.length,
+        newMessageLogs: recentLogs.filter(log => log.message && log.message.includes('Saved message')).length,
+        sample: recentLogs.slice(0, 10)
+      };
+    } catch (err) {
+      result.logs = { error: err.message };
+    }
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      diagnostics: result
+    });
+  } catch (error) {
+    console.error('Diagnostic error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Diagnostic failed',
+      message: error.message
+    });
+  }
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Express error:', err);

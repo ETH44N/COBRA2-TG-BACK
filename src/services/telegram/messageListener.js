@@ -4,13 +4,39 @@ const { sendWebhookNotification } = require('../webhook/webhookService');
 const logger = require('../../utils/logger');
 const config = require('../../config/telegram');
 
+// Rate limiting settings
+const RATE_LIMIT = {
+  messagesPerMinute: 20, // Maximum messages to process per minute per account
+  cooldownMs: 60000 / 20, // Time between messages (defaults to 3 seconds)
+  currentCount: {}, // Track current count of messages per account
+  lastProcessed: {} // Track last processed time per account
+};
+
+// Message queue
+const messageQueue = {
+  queue: [],
+  isProcessing: false
+};
+
 /**
  * Process a new message from a channel
  * @param {string} channelId - Channel ID (database ID)
  * @param {Object} message - Telegram message object
  * @param {Object} client - Telegram client
+ * @param {string} accountId - Account ID processing this message
  */
-const processNewMessage = async (channelId, message, client) => {
+const processNewMessage = async (channelId, message, client, accountId = null) => {
+  // Add to queue if rate limiting is needed
+  if (accountId) {
+    return queueMessageForProcessing({
+      type: 'new',
+      channelId,
+      message,
+      client,
+      accountId
+    });
+  }
+  
   try {
     if (!channelId) {
       throw new Error('Channel ID is required');
@@ -44,7 +70,7 @@ const processNewMessage = async (channelId, message, client) => {
       sender_name: message.sender ? (message.sender.username || message.sender.firstName || 'Unknown') : 'Unknown',
       text: message.text || '',
       raw_data: JSON.stringify(message),
-      created_at: new Date(message.date * 1000), // Convert Unix timestamp to Date
+      date: new Date(message.date * 1000), // Convert Unix timestamp to Date
       is_deleted: false
     };
     
@@ -83,6 +109,19 @@ const processNewMessage = async (channelId, message, client) => {
       }
     }
     
+    // Check if this message already exists to avoid duplicates
+    const existingMessage = await Message.findOne({
+      channel_id: channelId,
+      message_id: message.id
+    });
+    
+    if (existingMessage) {
+      logger.debug(`Message ${message.id} already exists in channel ${channel.channel_id}, skipping`, {
+        source: 'message-listener'
+      });
+      return existingMessage;
+    }
+    
     // Save to database - use findOneAndUpdate with upsert to avoid duplicates
     const savedMessage = await Message.findOneAndUpdate(
       { channel_id: channelId, message_id: message.id },
@@ -119,8 +158,19 @@ const processNewMessage = async (channelId, message, client) => {
  * Process a deleted message from a channel
  * @param {string} channelId - Channel ID (database ID)
  * @param {number} messageId - Message ID
+ * @param {string} accountId - Account ID processing this message
  */
-const processDeletedMessage = async (channelId, messageId) => {
+const processDeletedMessage = async (channelId, messageId, accountId = null) => {
+  // Add to queue if rate limiting is needed
+  if (accountId) {
+    return queueMessageForProcessing({
+      type: 'deleted',
+      channelId,
+      messageId,
+      accountId
+    });
+  }
+  
   try {
     if (!channelId) {
       throw new Error('Channel ID is required');
@@ -191,6 +241,133 @@ const processDeletedMessage = async (channelId, messageId) => {
 };
 
 /**
+ * Queue a message for processing with rate limiting
+ * @param {Object} messageTask - Task object with message details
+ */
+const queueMessageForProcessing = async (messageTask) => {
+  // Add to queue
+  messageQueue.queue.push(messageTask);
+  
+  // Start processing if not already running
+  if (!messageQueue.isProcessing) {
+    processMessageQueue();
+  }
+  
+  return { queued: true };
+};
+
+/**
+ * Process the message queue with rate limiting
+ */
+const processMessageQueue = async () => {
+  if (messageQueue.queue.length === 0) {
+    messageQueue.isProcessing = false;
+    return;
+  }
+  
+  messageQueue.isProcessing = true;
+  
+  // Get the next task
+  const task = messageQueue.queue.shift();
+  
+  try {
+    // Apply rate limiting
+    const shouldThrottle = checkRateLimit(task.accountId);
+    
+    if (shouldThrottle) {
+      // Put back at the front of the queue
+      messageQueue.queue.unshift(task);
+      
+      // Wait for cooldown period
+      setTimeout(processMessageQueue, RATE_LIMIT.cooldownMs);
+      return;
+    }
+    
+    // Process message based on type
+    if (task.type === 'new') {
+      await processNewMessage(task.channelId, task.message, task.client);
+    } else if (task.type === 'deleted') {
+      await processDeletedMessage(task.channelId, task.messageId);
+    }
+    
+    // Update rate limiting counters
+    updateRateLimit(task.accountId);
+    
+    // Process next message with slight delay
+    setTimeout(processMessageQueue, 50);
+  } catch (error) {
+    logger.error(`Error in message queue processing: ${error.message}`, {
+      source: 'message-listener',
+      context: { error: error.stack, task }
+    });
+    
+    // Continue with next message despite error
+    setTimeout(processMessageQueue, 100);
+  }
+};
+
+/**
+ * Check if rate limit should be applied for an account
+ * @param {string} accountId - Account ID
+ * @returns {boolean} - Whether throttling should be applied
+ */
+const checkRateLimit = (accountId) => {
+  const now = Date.now();
+  
+  // Initialize tracking for this account if needed
+  if (!RATE_LIMIT.lastProcessed[accountId]) {
+    RATE_LIMIT.lastProcessed[accountId] = 0;
+    RATE_LIMIT.currentCount[accountId] = 0;
+    return false;
+  }
+  
+  // Check time since last message and reset counter if needed
+  const timeSinceLast = now - RATE_LIMIT.lastProcessed[accountId];
+  if (timeSinceLast >= 60000) { // Reset after 1 minute
+    RATE_LIMIT.currentCount[accountId] = 0;
+    return false;
+  }
+  
+  // Check if we've exceeded rate limits
+  if (RATE_LIMIT.currentCount[accountId] >= RATE_LIMIT.messagesPerMinute) {
+    // Calculate remaining cooldown time
+    const cooldownNeeded = RATE_LIMIT.cooldownMs - timeSinceLast;
+    
+    if (cooldownNeeded > 0) {
+      logger.warn(`Rate limit reached for account ${accountId}, throttling for ${cooldownNeeded}ms`, {
+        source: 'message-listener'
+      });
+      return true;
+    }
+    
+    // If cooldown period has passed, allow processing
+    RATE_LIMIT.currentCount[accountId] = 0;
+    return false;
+  }
+  
+  return false;
+};
+
+/**
+ * Update rate limit tracking after processing a message
+ * @param {string} accountId - Account ID
+ */
+const updateRateLimit = (accountId) => {
+  const now = Date.now();
+  
+  // Initialize tracking for this account if needed
+  if (!RATE_LIMIT.lastProcessed[accountId]) {
+    RATE_LIMIT.lastProcessed[accountId] = now;
+    RATE_LIMIT.currentCount[accountId] = 1;
+    return;
+  }
+  
+  // Update last processed time and increment counter
+  RATE_LIMIT.lastProcessed[accountId] = now;
+  RATE_LIMIT.currentCount[accountId]++;
+};
+
+/**
  * Fetch message history for a channel
  * @param {Object} channel - Channel document
  * @param {Object} account - Account document
@@ -232,7 +409,15 @@ const fetchMessageHistory = async (channel, account, client, limit = 100) => {
           continue;
         }
         
-        await processNewMessage(channel._id, message, client);
+        // Queue message for processing
+        await queueMessageForProcessing({
+          type: 'new',
+          channelId: channel._id,
+          message,
+          client,
+          accountId: account._id.toString()
+        });
+        
         processedCount++;
       } catch (error) {
         logger.error(`Error processing historical message: ${error.message}`, {
@@ -249,7 +434,8 @@ const fetchMessageHistory = async (channel, account, client, limit = 100) => {
     
     return {
       success: true,
-      count: processedCount
+      count: processedCount,
+      queueLength: messageQueue.queue.length
     };
   } catch (error) {
     logger.error(`Error fetching message history for channel ${channel.channel_id}: ${error.message}`, {
@@ -263,5 +449,8 @@ const fetchMessageHistory = async (channel, account, client, limit = 100) => {
 module.exports = {
   processNewMessage,
   processDeletedMessage,
-  fetchMessageHistory
+  fetchMessageHistory,
+  queueMessageForProcessing,
+  RATE_LIMIT,
+  messageQueue
 }; 

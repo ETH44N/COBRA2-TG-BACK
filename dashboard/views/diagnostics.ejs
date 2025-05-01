@@ -1,0 +1,339 @@
+<!-- Page header -->
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="page-header">System Diagnostics</h1>
+    </div>
+    <div class="col-auto">
+        <button id="refresh-diagnostics" class="btn btn-primary">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Message Collection Diagnostics -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Message Collection Diagnostics</h5>
+                <div class="spinner-border spinner-border-sm text-primary" role="status" id="message-diagnostics-spinner">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    This section checks if messages are being properly stored in the database and helps diagnose issues with the message collection.
+                </div>
+                
+                <h6 class="mt-3">Collection Status:</h6>
+                <div id="collection-status">Loading...</div>
+                
+                <h6 class="mt-3">Message Counts:</h6>
+                <div id="message-counts">Loading...</div>
+                
+                <h6 class="mt-3">Message Samples:</h6>
+                <div id="message-samples">Loading...</div>
+                
+                <h6 class="mt-3">Log Analysis:</h6>
+                <div id="log-analysis">Loading...</div>
+                
+                <div class="mt-4">
+                    <button id="run-message-diagnostics" class="btn btn-primary">
+                        <i class="bi bi-tools"></i> Run Diagnostics
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Troubleshooting Steps -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Troubleshooting Guide</h5>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="troubleshootingAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingOne">
+                            <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+                                No Messages Being Stored
+                            </button>
+                        </h2>
+                        <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <ol>
+                                    <li>Check if accounts are properly connected to Telegram (status should be 'active').</li>
+                                    <li>Verify channels are properly assigned to accounts.</li>
+                                    <li>Check for errors in logs related to 'message-listener'.</li>
+                                    <li>Verify that event handlers are properly registered for each channel.</li>
+                                    <li>Check if the MongoDB connection is active and working.</li>
+                                    <li>Restart the backend service if everything else looks correct.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingTwo">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                                Database Connection Issues
+                            </button>
+                        </h2>
+                        <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <ol>
+                                    <li>Verify the MongoDB URI in your environment variables.</li>
+                                    <li>Check MongoDB server status and connectivity.</li>
+                                    <li>Look for MongoDB connection errors in the logs.</li>
+                                    <li>Ensure proper database permissions are set.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="headingThree">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                                Telegram API Issues
+                            </button>
+                        </h2>
+                        <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#troubleshootingAccordion">
+                            <div class="accordion-body">
+                                <ol>
+                                    <li>Check if accounts are being rate limited or banned by Telegram.</li>
+                                    <li>Verify session strings are valid and up-to-date.</li>
+                                    <li>Look for Telegram connection errors in the logs.</li>
+                                    <li>Ensure backend is properly processing event handlers.</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Hide spinner initially
+    document.getElementById('message-diagnostics-spinner').style.display = 'none';
+    
+    // Run diagnostics function
+    function runMessageDiagnostics() {
+        // Show spinner
+        document.getElementById('message-diagnostics-spinner').style.display = 'inline-block';
+        
+        // Reset content
+        document.getElementById('collection-status').innerHTML = 'Loading...';
+        document.getElementById('message-counts').innerHTML = 'Loading...';
+        document.getElementById('message-samples').innerHTML = 'Loading...';
+        document.getElementById('log-analysis').innerHTML = 'Loading...';
+        
+        // Fetch diagnostic data
+        fetch('/api/diagnostic/messages')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const diagnostics = data.diagnostics;
+                    
+                    // Update collection status
+                    let collectionStatus = `
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th>Collection Exists</th>
+                                    <td>${diagnostics.collectionExists ? 
+                                        '<span class="badge bg-success">Yes</span>' : 
+                                        '<span class="badge bg-danger">No</span>'}</td>
+                                </tr>
+                                <tr>
+                                    <th>Total Channels</th>
+                                    <td>${diagnostics.channelCount || 0}</td>
+                                </tr>
+                                <tr>
+                                    <th>Total Accounts</th>
+                                    <td>${diagnostics.accountCount || 0}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    `;
+                    document.getElementById('collection-status').innerHTML = collectionStatus;
+                    
+                    // Update message counts
+                    let messageCounts = `
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th>Count via Mongoose</th>
+                                    <td>${diagnostics.mongoose.error ? 
+                                        `<span class="text-danger">${diagnostics.mongoose.error}</span>` : 
+                                        diagnostics.mongoose.count}</td>
+                                </tr>
+                                <tr>
+                                    <th>Count via MongoDB Driver</th>
+                                    <td>${diagnostics.direct.error ? 
+                                        `<span class="text-danger">${diagnostics.direct.error}</span>` : 
+                                        diagnostics.direct.count}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    `;
+                    
+                    if (diagnostics.direct.fields && Object.keys(diagnostics.direct.fields).length > 0) {
+                        messageCounts += `
+                            <h6 class="mt-3">Field Analysis:</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Field Name</th>
+                                            <th>Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                        `;
+                        
+                        for (const [field, count] of Object.entries(diagnostics.direct.fields)) {
+                            messageCounts += `
+                                <tr>
+                                    <td>${field}</td>
+                                    <td>${count}</td>
+                                </tr>
+                            `;
+                        }
+                        
+                        messageCounts += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    }
+                    
+                    document.getElementById('message-counts').innerHTML = messageCounts;
+                    
+                    // Update message samples
+                    let messageSamples = '';
+                    
+                    if (diagnostics.mongoose.sample && diagnostics.mongoose.sample.length > 0) {
+                        messageSamples += `
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Channel</th>
+                                            <th>Message ID</th>
+                                            <th>Content</th>
+                                            <th>Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                        `;
+                        
+                        diagnostics.mongoose.sample.forEach(message => {
+                            messageSamples += `
+                                <tr>
+                                    <td>${message._id}</td>
+                                    <td>${message.channel_id}</td>
+                                    <td>${message.message_id}</td>
+                                    <td>${message.text || message.content || '<no content>'}</td>
+                                    <td>${new Date(message.created_at || message.date).toLocaleString()}</td>
+                                </tr>
+                            `;
+                        });
+                        
+                        messageSamples += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    } else {
+                        messageSamples = '<div class="alert alert-warning">No message samples found</div>';
+                    }
+                    
+                    document.getElementById('message-samples').innerHTML = messageSamples;
+                    
+                    // Update log analysis
+                    let logAnalysis = '';
+                    
+                    if (diagnostics.logs && !diagnostics.logs.error) {
+                        logAnalysis += `
+                            <div class="alert ${diagnostics.logs.newMessageLogs > 0 ? 'alert-success' : 'alert-danger'}">
+                                Found ${diagnostics.logs.count} message listener logs in the last 24 hours.
+                                ${diagnostics.logs.newMessageLogs} logs mention saving new messages.
+                            </div>
+                        `;
+                        
+                        if (diagnostics.logs.sample && diagnostics.logs.sample.length > 0) {
+                            logAnalysis += `
+                                <h6>Recent Logs:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th>Timestamp</th>
+                                                <th>Level</th>
+                                                <th>Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                            `;
+                            
+                            diagnostics.logs.sample.forEach(log => {
+                                logAnalysis += `
+                                    <tr>
+                                        <td>${new Date(log.timestamp).toLocaleString()}</td>
+                                        <td><span class="badge bg-${log.level === 'error' ? 'danger' : 
+                                                                  log.level === 'warn' ? 'warning' : 
+                                                                  log.level === 'info' ? 'info' : 'secondary'}">${log.level}</span></td>
+                                        <td>${log.message}</td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            logAnalysis += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `;
+                        }
+                    } else {
+                        logAnalysis = `<div class="alert alert-warning">Couldn't retrieve logs: ${diagnostics.logs?.error || 'No logs found'}</div>`;
+                    }
+                    
+                    document.getElementById('log-analysis').innerHTML = logAnalysis;
+                } else {
+                    // Handle error
+                    document.getElementById('collection-status').innerHTML = `<div class="alert alert-danger">Error: ${data.message || 'Could not fetch diagnostic data'}</div>`;
+                    document.getElementById('message-counts').innerHTML = '';
+                    document.getElementById('message-samples').innerHTML = '';
+                    document.getElementById('log-analysis').innerHTML = '';
+                }
+                
+                // Hide spinner
+                document.getElementById('message-diagnostics-spinner').style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error fetching diagnostic data:', error);
+                document.getElementById('collection-status').innerHTML = `<div class="alert alert-danger">Error: ${error.message || 'Could not fetch diagnostic data'}</div>`;
+                document.getElementById('message-counts').innerHTML = '';
+                document.getElementById('message-samples').innerHTML = '';
+                document.getElementById('log-analysis').innerHTML = '';
+                
+                // Hide spinner
+                document.getElementById('message-diagnostics-spinner').style.display = 'none';
+            });
+    }
+    
+    // Run diagnostics on load
+    runMessageDiagnostics();
+    
+    // Set up button click handlers
+    document.getElementById('run-message-diagnostics').addEventListener('click', runMessageDiagnostics);
+    document.getElementById('refresh-diagnostics').addEventListener('click', function() {
+        location.reload();
+    });
+});
+</script> 
