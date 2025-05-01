@@ -26,18 +26,13 @@ const messageQueue = {
  * @param {string} accountId - Account ID processing this message
  */
 const processNewMessage = async (channelId, message, client, accountId = null) => {
-  // Add to queue if rate limiting is needed
-  if (accountId) {
-    return queueMessageForProcessing({
-      type: 'new',
-      channelId,
-      message,
-      client,
+  try {
+    logger.debug(`Processing new message for channel ${channelId}`, {
+      source: 'message-listener',
+      messageId: message.id,
       accountId
     });
-  }
-  
-  try {
+    
     if (!channelId) {
       throw new Error('Channel ID is required');
     }
@@ -161,17 +156,12 @@ const processNewMessage = async (channelId, message, client, accountId = null) =
  * @param {string} accountId - Account ID processing this message
  */
 const processDeletedMessage = async (channelId, messageId, accountId = null) => {
-  // Add to queue if rate limiting is needed
-  if (accountId) {
-    return queueMessageForProcessing({
-      type: 'deleted',
-      channelId,
-      messageId,
+  try {
+    logger.debug(`Processing deleted message ${messageId} for channel ${channelId}`, {
+      source: 'message-listener',
       accountId
     });
-  }
-  
-  try {
+    
     if (!channelId) {
       throw new Error('Channel ID is required');
     }
@@ -245,15 +235,20 @@ const processDeletedMessage = async (channelId, messageId, accountId = null) => 
  * @param {Object} messageTask - Task object with message details
  */
 const queueMessageForProcessing = async (messageTask) => {
-  // Add to queue
+  logger.debug(`Queueing message for processing: ${JSON.stringify(messageTask)}`, {
+    source: 'message-listener',
+    accountId: messageTask.accountId,
+    channelId: messageTask.channelId
+  });
+  
   messageQueue.queue.push(messageTask);
   
-  // Start processing if not already running
+  // If queue processing isn't already running, start it
   if (!messageQueue.isProcessing) {
     processMessageQueue();
   }
   
-  return { queued: true };
+  return true;
 };
 
 /**
@@ -267,42 +262,48 @@ const processMessageQueue = async () => {
   
   messageQueue.isProcessing = true;
   
-  // Get the next task
-  const task = messageQueue.queue.shift();
-  
-  try {
-    // Apply rate limiting
-    const shouldThrottle = checkRateLimit(task.accountId);
-    
-    if (shouldThrottle) {
-      // Put back at the front of the queue
-      messageQueue.queue.unshift(task);
-      
-      // Wait for cooldown period
-      setTimeout(processMessageQueue, RATE_LIMIT.cooldownMs);
-      return;
-    }
-    
-    // Process message based on type
-    if (task.type === 'new') {
-      await processNewMessage(task.channelId, task.message, task.client);
-    } else if (task.type === 'deleted') {
-      await processDeletedMessage(task.channelId, task.messageId);
-    }
-    
-    // Update rate limiting counters
-    updateRateLimit(task.accountId);
-    
-    // Process next message with slight delay
-    setTimeout(processMessageQueue, 50);
-  } catch (error) {
-    logger.error(`Error in message queue processing: ${error.message}`, {
+  while (messageQueue.queue.length > 0) {
+    const task = messageQueue.queue.shift();
+    logger.debug(`Processing queued message task: ${JSON.stringify(task)}`, {
       source: 'message-listener',
-      context: { error: error.stack, task }
+      queueLength: messageQueue.queue.length,
+      taskType: task.type
     });
     
-    // Continue with next message despite error
-    setTimeout(processMessageQueue, 100);
+    try {
+      // Apply rate limiting
+      const shouldThrottle = checkRateLimit(task.accountId);
+      
+      if (shouldThrottle) {
+        // Put back at the front of the queue
+        messageQueue.queue.unshift(task);
+        
+        // Wait for cooldown period
+        setTimeout(processMessageQueue, RATE_LIMIT.cooldownMs);
+        return;
+      }
+      
+      // Process message based on type
+      if (task.type === 'new') {
+        await processNewMessage(task.channelId, task.message, task.client);
+      } else if (task.type === 'deleted') {
+        await processDeletedMessage(task.channelId, task.messageId);
+      }
+      
+      // Update rate limiting counters
+      updateRateLimit(task.accountId);
+      
+      // Process next message with slight delay
+      setTimeout(processMessageQueue, 50);
+    } catch (error) {
+      logger.error(`Error in message queue processing: ${error.message}`, {
+        source: 'message-listener',
+        context: { error: error.stack, task }
+      });
+      
+      // Continue with next message despite error
+      setTimeout(processMessageQueue, 100);
+    }
   }
 };
 

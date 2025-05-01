@@ -589,6 +589,12 @@ const startAccountListener = async (account, channels) => {
     // Create event handler for new messages
     const eventHandler = async (event) => {
       try {
+        logger.debug(`Received event: ${JSON.stringify(event, null, 2)}`, { 
+          accountId: account._id, 
+          eventType: event ? event.className : 'unknown',
+          source: 'channel-monitor'
+        });
+        
         if (!event.message) return;
         
         // Get relevant IDs from the message event
@@ -633,9 +639,10 @@ const startAccountListener = async (account, channels) => {
           }
         }
       } catch (error) {
-        logger.error(`Error processing message event: ${error.message}`, {
+        logger.error(`Error handling event: ${error.message}`, {
+          accountId: account._id,
           source: 'channel-monitor',
-          context: { error: error.stack }
+          stack: error.stack
         });
       }
     };

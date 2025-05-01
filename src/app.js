@@ -16,10 +16,10 @@ const Channel = require('./models/Channel');
 const Message = require('./models/Message');
 
 // Import routes
-const channelRoutes = require('./routes/channelRoutes');
 const accountRoutes = require('./routes/accountRoutes');
-const webhookRoutes = require('./routes/webhookRoutes');
+const channelRoutes = require('./routes/channelRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
 
 // Initialize Express app
 const app = express();
@@ -31,10 +31,25 @@ applySecurityMiddleware(app);
 app.use(express.json());
 
 // Routes
-app.use('/api/channels', channelRoutes);
 app.use('/api/accounts', accountRoutes);
-app.use('/api/webhooks', webhookRoutes);
+app.use('/api/channels', channelRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/webhooks', webhookRoutes);
+
+// Debug endpoint to check app status
+app.get('/debug', (req, res) => {
+  logger.info('Debug endpoint accessed', { source: 'app' });
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    routes: {
+      messageRoutes: !!messageRoutes,
+      accountRoutes: !!accountRoutes,
+      channelRoutes: !!channelRoutes,
+      webhookRoutes: !!webhookRoutes
+    }
+  });
+});
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
