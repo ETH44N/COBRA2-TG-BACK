@@ -829,8 +829,8 @@ const getChannelEntity = async (channelId, client) => {
   }
 };
 
-// Export module
-module.exports = {
+// Create a channelMonitor object for easier importing
+const channelMonitor = {
   addChannel,
   reassignChannel,
   initializeChannelMonitoring,
@@ -842,5 +842,19 @@ module.exports = {
   channelEntityCache
 };
 
-// Also export the entire module as channelMonitor for direct access
-module.exports.channelMonitor = module.exports; 
+// Export both individual functions and as an object
+module.exports = {
+  addChannel,
+  reassignChannel,
+  initializeChannelMonitoring,
+  joinChannel,
+  startListening,
+  startAccountListener,
+  getChannelEntity,
+  activeAccountListeners,
+  channelEntityCache,
+  channelMonitor  // Add the entire object
+};
+
+// Also assign to module.exports directly for better compatibility
+Object.assign(module.exports, channelMonitor); 

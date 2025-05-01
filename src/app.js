@@ -39,7 +39,6 @@ app.use('/api/webhooks', webhookRoutes);
 // Debug endpoint
 app.get('/debug', async (req, res) => {
   try {
-    const gramJSVersion = require('telegram/version');
     const { activeAccountListeners, channelEntityCache } = require('./services/telegram/channelMonitor');
     const { messageQueue, RATE_LIMIT } = require('./services/telegram/messageListener');
     
@@ -73,7 +72,7 @@ app.get('/debug', async (req, res) => {
         uptime: process.uptime(),
         nodeVersion: process.version,
         memoryUsage: process.memoryUsage(),
-        gramJSVersion: gramJSVersion || 'unknown'
+        gramJSVersion: require('../package.json').dependencies.telegram || 'unknown'
       },
       database: {
         status: dbStatus,

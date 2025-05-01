@@ -89,92 +89,68 @@ router.get('/recent', async (req, res) => {
  */
 router.get('/diagnostics', async (req, res) => {
   try {
-    // Get message counts
-    const totalMessages = await Message.countDocuments();
-    const deletedMessages = await Message.countDocuments({ is_deleted: true });
-    const messagesLast24h = await Message.countDocuments({
-      created_at: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-    });
+    // Basic database stats
+    const accountCount = await Account.countDocuments();
+    const channelCount = await Channel.countDocuments();
+    const messageCount = await Message.countDocuments();
     
-    // Get listener status
-    const accountListeners = activeAccountListeners ? Array.from(activeAccountListeners.keys()).length : 'Not available';
-    const accountsWithListeners = activeAccountListeners ? Array.from(activeAccountListeners.keys()) : [];
+    // Recent messages
+    const recentMessages = await Message.find()
+      .sort({ created_at: -1 })
+      .limit(5)
+      .lean();
     
-    // Get channel stats
-    const totalChannels = await Channel.countDocuments();
-    const activeChannels = await Channel.countDocuments({ is_active: true });
+    // Recent channels 
+    const recentChannels = await Channel.find()
+      .sort({ last_checked: -1 })
+      .limit(5)
+      .lean();
     
-    // Get account stats
-    const totalAccounts = await Account.countDocuments();
-    const activeAccounts = await Account.countDocuments({ status: 'active', isBanned: { $ne: true } });
+    // Database connection status
+    const dbStatus = require('mongoose').connection.readyState === 1 ? 'connected' : 'disconnected';
     
-    // Get assignment stats
-    const assignments = await AccountChannelAssignment.countDocuments({ status: 'active' });
-    
-    // Get rate limit info
-    const rateLimitInfo = RATE_LIMIT ? {
-      messagesPerMinute: RATE_LIMIT.messagesPerMinute,
-      cooldownMs: RATE_LIMIT.cooldownMs,
-      accountsTracked: RATE_LIMIT.currentCount ? Object.keys(RATE_LIMIT.currentCount).length : 0
-    } : 'Not available';
-    
-    // Get queue info
-    const queueInfo = messageQueue ? {
-      queueLength: messageQueue.queue.length,
-      isProcessing: messageQueue.isProcessing
-    } : 'Not available';
-    
-    // Get entity cache info
-    const entityCacheSize = channelEntityCache ? channelEntityCache.size : 'Not available';
-    
+    // Return diagnostic data
     res.json({
-      success: true,
-      diagnostics: {
-        messages: {
-          total: totalMessages,
-          active: totalMessages - deletedMessages,
-          deleted: deletedMessages,
-          last24h: messagesLast24h
-        },
-        channels: {
-          total: totalChannels,
-          active: activeChannels,
-          inactive: totalChannels - activeChannels
-        },
-        accounts: {
-          total: totalAccounts,
-          active: activeAccounts,
-          inactive: totalAccounts - activeAccounts,
-          withListeners: accountsWithListeners.length
-        },
-        listeners: {
-          totalActive: accountListeners,
-          accountIds: accountsWithListeners
-        },
-        assignments: {
-          total: assignments
-        },
-        cache: {
-          entityCacheSize
-        },
-        rateLimiting: rateLimitInfo,
-        queue: queueInfo,
-        systemInfo: {
-          uptime: process.uptime(),
-          memoryUsage: process.memoryUsage(),
-          timestamp: new Date()
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      database: {
+        status: dbStatus,
+        stats: {
+          accounts: accountCount,
+          channels: channelCount,
+          messages: messageCount
         }
+      },
+      recentData: {
+        messages: recentMessages.map(msg => ({
+          id: msg._id,
+          channelId: msg.channel_id,
+          messageId: msg.message_id,
+          content: msg.content ? msg.content.substring(0, 50) + '...' : '[no content]',
+          createdAt: msg.created_at
+        })),
+        channels: recentChannels.map(ch => ({
+          id: ch._id,
+          channelId: ch.channel_id,
+          title: ch.title,
+          isActive: ch.is_active,
+          lastChecked: ch.last_checked
+        }))
+      },
+      serverInfo: {
+        nodeVersion: process.version,
+        uptime: process.uptime()
       }
     });
   } catch (error) {
-    logger.error(`Error getting message diagnostics: ${error.message}`, {
-      source: 'api',
-      context: { error: error.stack }
+    logger.error(`Error getting diagnostics: ${error.message}`, {
+      source: 'message-routes',
+      stack: error.stack
     });
     
     res.status(500).json({
-      success: false,
-      error: 'Failed to get diagnostic information'
+      status: 'error',
+      message: `Diagnostics error: ${error.message}`
     });
   }
 });
@@ -238,15 +214,21 @@ router.post('/test-message', async (req, res) => {
 // Get monitor status (active event handlers)
 router.get('/monitor-status', async (req, res) => {
   try {
-    // Import services with required variables
-    const { activeAccountListeners, channelEntityCache } = require('../services/telegram/channelMonitor');
-    const { messageQueue, RATE_LIMIT } = require('../services/telegram/messageListener');
+    // Import services with required variables - use try/catch for more resilient imports
+    let activeAccountListeners, channelEntityCache, messageQueue, RATE_LIMIT;
     
-    // Check if we have the required variables
-    if (!activeAccountListeners) {
-      return res.status(500).json({
-        status: 'error',
-        message: 'Could not access activeAccountListeners - module may not be initialized'
+    try {
+      const channelMonitor = require('../services/telegram/channelMonitor');
+      activeAccountListeners = channelMonitor.activeAccountListeners;
+      channelEntityCache = channelMonitor.channelEntityCache;
+      
+      const messageListener = require('../services/telegram/messageListener');
+      messageQueue = messageListener.messageQueue;
+      RATE_LIMIT = messageListener.RATE_LIMIT;
+    } catch (importError) {
+      logger.error(`Error importing monitor dependencies: ${importError.message}`, {
+        source: 'message-routes',
+        stack: importError.stack
       });
     }
     
@@ -263,36 +245,40 @@ router.get('/monitor-status', async (req, res) => {
     
     // Information about each active listener
     const listenersInfo = [];
-    for (const [accountId, listener] of activeAccountListeners.entries()) {
-      // Get the account information
-      const account = await Account.findById(accountId);
-      
-      // Get channel information for this listener
-      const channels = [];
-      if (listener.channelIds && listener.channelIds.length > 0) {
-        for (const channelId of listener.channelIds) {
-          const channel = await Channel.findById(channelId);
-          if (channel) {
-            channels.push({
-              id: channelId,
-              channelId: channel.channel_id,
-              title: channel.title,
-              lastChecked: channel.last_checked
-            });
+    
+    // Only process listeners if available
+    if (activeAccountListeners && activeAccountListeners.size > 0) {
+      for (const [accountId, listener] of activeAccountListeners.entries()) {
+        // Get the account information
+        const account = await Account.findById(accountId);
+        
+        // Get channel information for this listener
+        const channels = [];
+        if (listener.channelIds && listener.channelIds.length > 0) {
+          for (const channelId of listener.channelIds.slice(0, 3)) { // Only get up to 3 channels to avoid overload
+            const channel = await Channel.findById(channelId);
+            if (channel) {
+              channels.push({
+                id: channelId,
+                channelId: channel.channel_id,
+                title: channel.title,
+                lastChecked: channel.last_checked
+              });
+            }
           }
         }
+        
+        // Add to list of listeners
+        listenersInfo.push({
+          accountId,
+          phone: account ? account.phone_number : 'unknown',
+          handlerCount: listener.handlers ? listener.handlers.length : 0,
+          monitoredChannels: listener.channelIds ? listener.channelIds.length : 0,
+          channels: channels,
+          hasInterval: !!listener.messageCheckInterval,
+          clientConnected: listener.client && listener.client.connected
+        });
       }
-      
-      // Add to list of listeners
-      listenersInfo.push({
-        accountId,
-        phone: account ? account.phone_number : 'unknown',
-        handlerCount: listener.handlers ? listener.handlers.length : 0,
-        monitoredChannels: listener.channelIds ? listener.channelIds.length : 0,
-        channels: channels.slice(0, 5), // Only include up to 5 channels to keep response reasonable
-        hasInterval: !!listener.messageCheckInterval,
-        clientConnected: listener.client && listener.client.connected
-      });
     }
     
     // Return monitor status data
@@ -301,13 +287,13 @@ router.get('/monitor-status', async (req, res) => {
       timestamp: new Date().toISOString(),
       activeAccounts,
       activeListeners: {
-        count: activeAccountListeners.size,
+        count: activeAccountListeners ? activeAccountListeners.size : 0,
         listeners: listenersInfo
       },
       messageQueue: {
         length: messageQueue ? messageQueue.queue.length : 0,
         isProcessing: messageQueue ? messageQueue.isProcessing : false,
-        rateLimit: RATE_LIMIT
+        rateLimit: RATE_LIMIT || { accounts: {} }
       },
       stats: {
         recentMessages,
@@ -472,6 +458,92 @@ router.get('/test-telegram-updates', async (req, res) => {
       success: false,
       message: 'Error testing Telegram updates',
       error: error.message
+    });
+  }
+});
+
+// Test Telegram connection endpoint
+router.get('/test-connection', async (req, res) => {
+  try {
+    // Find an active account
+    const account = await Account.findOne({ 
+      status: 'active',
+      isBanned: { $ne: true }
+    });
+    
+    if (!account) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No active accounts found'
+      });
+    }
+    
+    // Create a client for testing
+    const { createClient } = require('../services/telegram/telegramClient');
+    const client = await createClient(account);
+    
+    // Test connection
+    let connectionStatus = 'disconnected';
+    let me = null;
+    
+    try {
+      // Check if connected
+      if (client.connected) {
+        connectionStatus = 'connected';
+        
+        // Try to get account info
+        me = await client.getMe();
+        
+        // Try to get dialogs to verify further
+        const dialogs = await client.getDialogs({ limit: 1 });
+        if (dialogs && dialogs.length > 0) {
+          connectionStatus = 'fully_operational';
+        }
+      }
+    } catch (telegramError) {
+      logger.error(`Error testing Telegram connection: ${telegramError.message}`, {
+        source: 'message-routes',
+        accountId: account._id.toString(),
+        stack: telegramError.stack
+      });
+    }
+    
+    // Disconnect to clean up
+    try {
+      await client.disconnect();
+    } catch (disconnectError) {
+      logger.warn(`Error disconnecting client: ${disconnectError.message}`, {
+        source: 'message-routes'
+      });
+    }
+    
+    // Return test results
+    res.json({
+      status: 'ok',
+      account: {
+        id: account._id,
+        phone: account.phone_number
+      },
+      connection: {
+        status: connectionStatus,
+        user: me ? {
+          id: me.id,
+          username: me.username,
+          firstName: me.firstName,
+          lastName: me.lastName
+        } : null
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error(`Error testing connection: ${error.message}`, {
+      source: 'message-routes',
+      stack: error.stack
+    });
+    
+    res.status(500).json({
+      status: 'error',
+      message: `Connection test error: ${error.message}`
     });
   }
 });

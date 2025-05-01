@@ -456,7 +456,7 @@ const fetchMessageHistory = async (channelId, account, client, limit = 20) => {
   }
 };
 
-// Create messageListener object for easier importing
+// Make sure messageListener is properly defined
 const messageListener = {
   processNewMessage,
   processDeletedMessage,
@@ -467,6 +467,7 @@ const messageListener = {
   messageQueue
 };
 
+// Export functions and variables individually AND as an object
 module.exports = {
   processNewMessage,
   processDeletedMessage,
@@ -474,5 +475,8 @@ module.exports = {
   queueMessageForProcessing,
   RATE_LIMIT,
   messageQueue,
-  messageListener
-}; 
+  messageListener   // Add this to make the entire object available
+};
+
+// Also assign to module.exports directly for better compatibility
+Object.assign(module.exports, messageListener); 
