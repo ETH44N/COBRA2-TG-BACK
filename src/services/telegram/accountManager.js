@@ -283,98 +283,11 @@ const getBestAccountForNewChannel = async () => {
   }
 };
 
-/**
- * Check for failed account event handlers and restart them
- * This function should be called periodically to ensure all accounts are properly listening
- */
-const restartFailedListeners = async () => {
-  try {
-    logger.info('Checking for failed account listeners', {
-      source: 'account-manager'
-    });
-    
-    // Check if channelMonitor is available
-    const channelMonitor = require('./channelMonitor');
-    
-    if (!channelMonitor.activeAccountListeners) {
-      logger.warn('Cannot check for failed listeners, activeAccountListeners not available', {
-        source: 'account-manager'
-      });
-      return;
-    }
-    
-    // Get all active accounts
-    const activeAccounts = await Account.find({ status: 'active', isBanned: { $ne: true } });
-    
-    // Get all active channel assignments
-    const assignments = await AccountChannelAssignment.find({ status: 'active' })
-      .populate('channel_id')
-      .populate('account_id');
-    
-    // Group assignments by account
-    const accountChannels = {};
-    
-    for (const assignment of assignments) {
-      if (!assignment.account_id || !assignment.channel_id) continue;
-      
-      const accountId = assignment.account_id._id.toString();
-      
-      if (!accountChannels[accountId]) {
-        accountChannels[accountId] = [];
-      }
-      
-      accountChannels[accountId].push(assignment.channel_id);
-    }
-    
-    // Check each active account
-    for (const account of activeAccounts) {
-      const accountId = account._id.toString();
-      
-      // Skip accounts with no assigned channels
-      if (!accountChannels[accountId] || accountChannels[accountId].length === 0) {
-        continue;
-      }
-      
-      // Check if this account has an active listener
-      if (!channelMonitor.activeAccountListeners.has(accountId)) {
-        logger.warn(`Account ${account.phone_number} has assigned channels but no active listener, restarting...`, {
-          source: 'account-manager'
-        });
-        
-        try {
-          // Restart listener for this account
-          await channelMonitor.startAccountListener(account, accountChannels[accountId]);
-          
-          logger.info(`Successfully restarted listener for account ${account.phone_number}`, {
-            source: 'account-manager'
-          });
-        } catch (error) {
-          logger.error(`Failed to restart listener for account ${account.phone_number}: ${error.message}`, {
-            source: 'account-manager',
-            context: { error: error.stack }
-          });
-        }
-      }
-    }
-    
-    logger.info('Finished checking for failed listeners', {
-      source: 'account-manager'
-    });
-  } catch (error) {
-    logger.error(`Error checking for failed listeners: ${error.message}`, {
-      source: 'account-manager',
-      context: { error: error.stack }
-    });
-  }
-};
-
 module.exports = {
   initializeAccounts,
-  getClient,
   getLeastLoadedAccount,
-  updateAccountChannelCount,
-  checkAccountsHealth,
   getBestAccountForNewChannel,
-  restartFailedListeners,
-  addAccount
+  updateAccountChannelCount,
+  addAccount,
+  checkAccountsHealth
 }; 

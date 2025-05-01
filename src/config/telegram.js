@@ -1,5 +1,5 @@
 module.exports = {
-  apiId: parseInt(process.env.TELEGRAM_API_ID, 10),
+  apiId: process.env.TELEGRAM_API_ID,
   apiHash: process.env.TELEGRAM_API_HASH,
   maxReconnects: 5,
   reconnectDelay: 5000, // 5 seconds
