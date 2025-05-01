@@ -4,7 +4,7 @@ const Account = require('../../models/Account');
 const { getClient } = require('./client');
 const { getLeastLoadedAccount, updateAccountChannelCount } = require('./accountManager');
 const logger = require('../../utils/logger');
-const { processNewMessage, processDeletedMessage, queueMessageForProcessing } = require('./messageListener');
+const { processNewMessage, processDeletedMessage, queueMessageForProcessing, fetchMessageHistory, extractMessageData } = require('./messageListener');
 const { NewMessage } = require('telegram/events');
 const { getBestAccountForNewChannel } = require('./accountManager');
 
@@ -641,29 +641,8 @@ const startAccountListener = async (account, channels) => {
             return;
           }
           
-          // Extract necessary message data from the event to avoid circular references
-          const messageData = {
-            id: event.message.id,
-            text: event.message.text || '',
-            date: event.message.date,
-            peerId: event.message.peerId ? {
-              channelId: event.message.peerId.channelId,
-              userId: event.message.peerId.userId
-            } : null,
-            chatId: event.message.chatId,
-            fromId: event.message.fromId,
-            media: event.message.media ? {
-              type: event.message.media.constructor?.name || 'Unknown',
-              photo: event.message.media.photo ? {
-                id: event.message.media.photo.id,
-                accessHash: event.message.media.photo.accessHash,
-              } : null,
-              document: event.message.media.document ? {
-                id: event.message.media.document.id,
-                mimeType: event.message.media.document.mimeType,
-              } : null
-            } : null
-          };
+          // Extract message data using the safer method
+          const messageData = extractMessageData(event.message);
           
           // Process new message with rate limiting
           await queueMessageForProcessing({
@@ -686,38 +665,156 @@ const startAccountListener = async (account, channels) => {
     // Create handler for raw updates (to catch deletions)
     const rawUpdateHandler = async (update) => {
       try {
-        logger.debug(`Received Raw update: ${update?.className || 'unknown'}`, { 
-          accountId: account._id,
-          source: 'channel-monitor'
+        // Log all raw updates for debugging
+        logger.debug(`[Raw Update] Received update: ${update.className}`, {
+          source: 'channel-monitor',
+          accountId: account._id.toString(),
+          updateType: update.className
         });
-        
-        // Check for deleted messages
-        if (update?.className === 'UpdateDeleteChannelMessages') {
-          const channelId = update.channelId?.toString();
-          if (!channelId) return;
+
+        // Handle channel message deletions
+        if (update.className === 'UpdateDeleteChannelMessages') {
+          if (update.channelId && update.messages) {
+            const telegramChannelId = update.channelId.toString();
+            const channelDbId = channelIdsMap[telegramChannelId];
+            
+            if (channelDbId) {
+              for (const deletedMsgId of update.messages) {
+                logger.info(`Detected message deletion in channel ${telegramChannelId}, message ID: ${deletedMsgId}`, {
+                  source: 'channel-monitor',
+                  accountId: account._id.toString(),
+                  channelId: channelDbId,
+                  messageId: deletedMsgId
+                });
+
+                await queueMessageForProcessing({
+                  type: 'deleted',
+                  channelId: channelDbId,
+                  messageId: deletedMsgId,
+                  accountId: account._id.toString()
+                });
+              }
+            } else {
+              logger.warn(`Received message deletion for unknown channel: ${telegramChannelId}`, {
+                source: 'channel-monitor',
+                accountId: account._id.toString()
+              });
+            }
+          }
+        }
+        // Handle new channel messages that might not be caught by NewMessage handler
+        else if (update.className === 'UpdateNewChannelMessage' || update.className === 'UpdateEditChannelMessage') {
+          if (update.message) {
+            // Try to extract channel ID from the message
+            const peerId = update.message.peerId;
+            const telegramChannelId = peerId && peerId.channelId ? peerId.channelId.toString() : null;
+            
+            if (telegramChannelId) {
+              const channelDbId = channelIdsMap[telegramChannelId];
+              
+              if (channelDbId) {
+                logger.info(`Detected message via Raw update in channel ${telegramChannelId}, message ID: ${update.message.id}`, {
+                  source: 'channel-monitor',
+                  accountId: account._id.toString(),
+                  channelId: channelDbId,
+                  messageId: update.message.id,
+                  updateType: update.className
+                });
+                
+                // Use extractMessageData to avoid circular references
+                const messageData = {
+                  id: update.message.id,
+                  text: update.message.message || update.message.text || '',
+                  date: update.message.date,
+                  peerId: update.message.peerId ? {
+                    channelId: update.message.peerId.channelId,
+                    userId: update.message.peerId.userId
+                  } : null,
+                  chatId: update.message.chatId,
+                  fromId: update.message.fromId,
+                  media: update.message.media ? {
+                    type: update.message.media.constructor?.name || 'Unknown',
+                    photo: update.message.media.photo ? {
+                      id: update.message.media.photo.id,
+                      accessHash: update.message.media.photo.accessHash,
+                    } : null,
+                    document: update.message.media.document ? {
+                      id: update.message.media.document.id,
+                      mimeType: update.message.media.document.mimeType,
+                    } : null
+                  } : null
+                };
+                
+                await queueMessageForProcessing({
+                  type: 'new',
+                  channelId: channelDbId,
+                  message: messageData,
+                  client,
+                  accountId: account._id.toString()
+                });
+              } else {
+                logger.debug(`Received message for unmonitored channel: ${telegramChannelId}`, {
+                  source: 'channel-monitor',
+                  accountId: account._id.toString()
+                });
+              }
+            } else {
+              logger.debug(`Received message update without clear channel ID`, {
+                source: 'channel-monitor',
+                accountId: account._id.toString(),
+                messageId: update.message.id,
+                updateClassName: update.className
+              });
+            }
+          }
+        }
+        // Check for general channel updates that might indicate activity
+        else if (update.className === 'UpdateChannel') {
+          const telegramChannelId = update.channelId ? update.channelId.toString() : null;
           
-          const channelDbId = channelIdsMap[channelId];
-          if (!channelDbId) return;
-          
-          logger.info(`Detected DELETED messages in channel ${channelId}: ${JSON.stringify(update.messages)}`, {
-            source: 'channel-monitor'
-          });
-          
-          // Process each deleted message ID
-          for (const messageId of update.messages) {
-            await queueMessageForProcessing({
-              type: 'deleted',
-              channelId: channelDbId,
-              messageId,
-              accountId: account._id.toString()
-            });
+          if (telegramChannelId) {
+            const channelDbId = channelIdsMap[telegramChannelId];
+            
+            if (channelDbId) {
+              logger.debug(`Received channel update for ${telegramChannelId}`, {
+                source: 'channel-monitor',
+                accountId: account._id.toString(),
+                channelId: channelDbId
+              });
+              
+              // After receiving a channel update, we might want to check for new messages
+              // as some message events might not be explicitly sent
+              setTimeout(async () => {
+                try {
+                  logger.debug(`Checking for new messages after channel update for ${telegramChannelId}`, {
+                    source: 'channel-monitor',
+                    channelId: channelDbId
+                  });
+                  
+                  // Get the channel entity from our cached entities
+                  const entity = channelEntities.find(e => e && e.id === parseInt(telegramChannelId));
+                  
+                  if (entity) {
+                    // Fetch only the most recent messages (limit to 5 to reduce load)
+                    await fetchMessageHistory(channelDbId, account, client, 5);
+                  }
+                } catch (checkError) {
+                  logger.error(`Error checking for new messages after channel update: ${checkError.message}`, {
+                    source: 'channel-monitor',
+                    stack: checkError.stack,
+                    channelId: channelDbId
+                  });
+                }
+              }, 2000); // Wait 2 seconds before checking
+            }
           }
         }
       } catch (error) {
-        logger.error(`Error handling Raw update: ${error.message}`, {
-          accountId: account._id,
+        logger.error(`Error handling raw update: ${error.message}`, {
           source: 'channel-monitor',
-          stack: error.stack
+          stack: error.stack,
+          accountId: account._id.toString(),
+          updateType: update?.className
         });
       }
     };
@@ -729,12 +826,90 @@ const startAccountListener = async (account, channels) => {
     let rawHandlerRegistered = false;
     
     try {
-      // Register NewMessage handler
-      client.addEventHandler(newMessageHandler, new NewMessage({}));
+      // Register NewMessage handler with specific chat filters
+      // This is important for public channels - we need to explicitly specify the channels
+      client.addEventHandler(newMessageHandler, new NewMessage({
+        chats: telegramChannelIds.length > 0 ? telegramChannelIds : null,
+        incoming: true,
+        outgoing: false
+      }));
       newMessageHandlerRegistered = true;
-      logger.info(`Registered NewMessage handler for account ${account.phone_number}`, {
+      
+      logger.info(`Registered NewMessage handler for account ${account.phone_number} monitoring ${telegramChannelIds.length} channels`, {
         source: 'channel-monitor'
       });
+      
+      // Also add a channel update handler for each specific channel entity
+      // This improves detection reliability for some channel types
+      for (const entity of channelEntities) {
+        if (entity && entity.id) {
+          client.addEventHandler(async (update) => {
+            try {
+              logger.debug(`Received direct channel update for ${entity.id}`, {
+                source: 'channel-monitor',
+                updateType: update?.className
+              });
+              
+              // If this update contains a message, process it
+              if (update.message) {
+                const channelDbId = channelIdsMap[entity.id.toString()];
+                if (channelDbId) {
+                  logger.info(`Detected message via channel update in ${entity.id}`, {
+                    source: 'channel-monitor',
+                    messageId: update.message.id
+                  });
+                  
+                  // Extract necessary message data
+                  const messageData = {
+                    id: update.message.id,
+                    text: update.message.text || '',
+                    date: update.message.date,
+                    peerId: update.message.peerId ? {
+                      channelId: update.message.peerId.channelId,
+                      userId: update.message.peerId.userId
+                    } : null,
+                    chatId: update.message.chatId,
+                    fromId: update.message.fromId,
+                    media: update.message.media ? {
+                      type: update.message.media.constructor?.name || 'Unknown',
+                      photo: update.message.media.photo ? {
+                        id: update.message.media.photo.id,
+                        accessHash: update.message.media.photo.accessHash,
+                      } : null,
+                      document: update.message.media.document ? {
+                        id: update.message.media.document.id,
+                        mimeType: update.message.media.document.mimeType,
+                      } : null
+                    } : null
+                  };
+                  
+                  await queueMessageForProcessing({
+                    type: 'new',
+                    channelId: channelDbId,
+                    message: messageData,
+                    client,
+                    accountId: account._id.toString()
+                  });
+                }
+              }
+            } catch (error) {
+              logger.error(`Error handling channel update for ${entity.id}: ${error.message}`, {
+                source: 'channel-monitor',
+                stack: error.stack
+              });
+            }
+          }, {
+            chats: [entity.id],
+            func: update => update.className === 'UpdateChannel' || 
+                           update.className === 'UpdateNewChannelMessage' ||
+                           update.className === 'UpdateEditChannelMessage'
+          });
+          
+          logger.debug(`Added specific channel update handler for ${entity.title || entity.id}`, {
+            source: 'channel-monitor'
+          });
+        }
+      }
     } catch (nmError) {
       logger.error(`Failed to register NewMessage handler: ${nmError.message}`, {
         source: 'channel-monitor',
@@ -743,9 +918,13 @@ const startAccountListener = async (account, channels) => {
     }
     
     try {
-      // Register Raw handler
-      client.addEventHandler(rawUpdateHandler, new Raw({}));
+      // Register Raw handler to catch ALL updates
+      // This is important as some channel events only appear in raw updates
+      client.addEventHandler(rawUpdateHandler, new Raw({
+        types: ['UpdateChannel', 'UpdateNewChannelMessage', 'UpdateEditChannelMessage', 'UpdateDeleteChannelMessages']
+      }));
       rawHandlerRegistered = true;
+      
       logger.info(`Registered Raw update handler for account ${account.phone_number}`, {
         source: 'channel-monitor'
       });
