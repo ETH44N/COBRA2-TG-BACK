@@ -8,13 +8,93 @@
 const mongoose = require('mongoose');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const config = require('../config/telegram');
 const logger = require('../utils/logger');
 const Account = require('../models/Account');
 const Channel = require('../models/Channel');
 const Message = require('../models/Message');
-const { extractMessageData } = require('../services/telegram/messageListener');
+// Remove the import that might be causing issues
+// const { extractMessageData } = require('../services/telegram/messageListener');
 require('dotenv').config();
+
+// Implement extractMessageData directly in this file
+/**
+ * Safely extract data from a Telegram message object to avoid circular references
+ * @param {Object} message - Telegram message object
+ * @returns {Object} - Clean message data
+ */
+function extractMessageData(message) {
+  if (!message || typeof message !== 'object') {
+    return {
+      id: null,
+      text: '',
+      date: new Date(),
+      hasMedia: false,
+      mediaType: null,
+      chat: { id: null, title: null }
+    };
+  }
+
+  try {
+    // Extract basic message properties
+    const data = {
+      id: message.id || null,
+      text: message.text || message.message || '',
+      date: message.date ? new Date(message.date * 1000) : new Date(),
+      hasMedia: false,
+      mediaType: null,
+      chat: {
+        id: message.chatId || (message.chat ? message.chat.id : null),
+        title: message.chat ? (message.chat.title || message.chat.username || null) : null
+      }
+    };
+
+    // Check for media
+    if (message.media) {
+      data.hasMedia = true;
+      // Determine media type
+      if (message.media.photo) {
+        data.mediaType = 'photo';
+      } else if (message.media.document) {
+        data.mediaType = 'document';
+        if (message.media.document.mimeType && message.media.document.mimeType.startsWith('video/')) {
+          data.mediaType = 'video';
+        }
+      } else if (message.media.webpage) {
+        data.mediaType = 'webpage';
+        // Extract additional text from webpage if available
+        if (message.media.webpage.description) {
+          data.text += '\n' + message.media.webpage.description;
+        }
+      }
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error extracting message data:', error);
+    return {
+      id: message.id || null,
+      text: 'Error extracting message content',
+      date: new Date(),
+      hasMedia: false,
+      mediaType: null,
+      chat: { id: null, title: null }
+    };
+  }
+}
+
+// Make sure we have API credentials
+const API_ID = process.env.TELEGRAM_API_ID;
+const API_HASH = process.env.TELEGRAM_API_HASH;
+
+if (!API_ID || !API_HASH) {
+  console.error("ERROR: Telegram API credentials not found in environment variables.");
+  console.error("Please make sure TELEGRAM_API_ID and TELEGRAM_API_HASH are set in .env file.");
+  process.exit(1);
+}
+
+console.log("Using Telegram API credentials:");
+console.log(`API_ID: ${API_ID}`);
+console.log(`API_HASH: ${API_HASH.substring(0, 4)}...${API_HASH.substring(API_HASH.length - 4)}`); // Only show part of the hash for security
 
 // Set up MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -47,8 +127,8 @@ async function createClient(account) {
     const session = new StringSession(account.session_string);
     const client = new TelegramClient(
       session,
-      config.apiId,
-      config.apiHash,
+      parseInt(API_ID, 10),  // Make sure it's an integer
+      API_HASH,
       {
         connectionRetries: 5,
         retryDelay: 1000,
