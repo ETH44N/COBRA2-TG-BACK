@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
+const Schema = mongoose.Schema;
 
-const channelSchema = new mongoose.Schema({
+const channelSchema = new Schema({
   _id: {
     type: String,
     default: () => uuidv4()
@@ -22,7 +23,7 @@ const channelSchema = new mongoose.Schema({
     trim: true
   },
   joined_by_account_id: {
-    type: String,
+    type: Schema.Types.ObjectId,
     ref: 'Account'
   },
   date_joined: {
@@ -49,6 +50,9 @@ const channelSchema = new mongoose.Schema({
     type: String
   },
   last_error_at: {
+    type: Date
+  },
+  last_poll_check: {
     type: Date
   }
 }, {

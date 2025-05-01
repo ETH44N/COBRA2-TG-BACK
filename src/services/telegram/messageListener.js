@@ -4,13 +4,14 @@ const { sendWebhookNotification } = require('../webhook/webhookService');
 const logger = require('../../utils/logger');
 const config = require('../../config/telegram');
 
-// Rate limiting settings
+// Rate limiting configuration
 const RATE_LIMIT = {
-  messagesPerMinute: 20, // Maximum messages to process per minute per account
-  cooldownMs: 60000 / 20, // Time between messages (defaults to 3 seconds)
-  currentCount: {}, // Track current count of messages per account
-  lastProcessed: {} // Track last processed time per account
+  maxMessagesPerMinute: 30,
+  windowMs: 60 * 1000  // 1 minute
 };
+
+// Rate limiting state
+const rateLimits = new Map();
 
 // Message queue
 const messageQueue = {
@@ -20,104 +21,107 @@ const messageQueue = {
 
 /**
  * Process a new message
+ * @param {string} channelId - Channel ID
+ * @param {Object} message - Message data
+ * @param {Object} client - Telegram client
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object|null>} - Saved message or null
  */
 const processNewMessage = async (channelId, message, client, accountId = null) => {
   try {
+    // Basic validation
     if (!message || !message.id) {
-      logger.error('Invalid message object', { 
-        source: 'message-listener',
-        channelId
-      });
-      return;
-    }
-    
-    // Log message details for debugging
-    logger.debug(`Processing new message ${message.id}`, {
-      channelId,
-      messageId: message.id,
-      hasMedia: !!message.media,
-      source: 'message-listener'
-    });
-    
-    // Get the channel from the database
-    const channel = await Channel.findById(channelId);
-    if (!channel) {
-      logger.error(`Channel not found in database: ${channelId}`, {
+      logger.error(`Cannot process message without ID for channel ${channelId}`, {
         source: 'message-listener'
       });
-      return;
+      return null;
     }
     
-    // Check if message already exists to avoid duplicates
+    logger.debug(`Processing new message ${message.id} for channel ${channelId}`, {
+      source: 'message-listener',
+      accountId
+    });
+    
+    // Check if the channel exists
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      logger.error(`Channel ${channelId} not found in database`, {
+        source: 'message-listener'
+      });
+      return null;
+    }
+    
+    // Check if this message already exists (avoid duplicates)
     const existingMessage = await Message.findOne({
       channel_id: channelId,
-      message_id: message.id.toString()
+      message_id: message.id
     });
     
     if (existingMessage) {
-      logger.debug(`Message ${message.id} already exists for channel ${channel.channel_id}`, {
-        source: 'message-listener'
+      logger.debug(`Message ${message.id} already exists in database, skipping`, {
+        source: 'message-listener',
+        messageId: message.id,
+        channelId
       });
-      return;
+      return existingMessage;
     }
     
-    // Extract content and determine message type
-    let content = message.text || '';
-    let messageType = 'text';
+    // Determine media type
+    let mediaType = 'none';
+    let mediaUrls = null;
     
-    // Handle media content
     if (message.media) {
-      messageType = 'media';
-      const mediaType = message.media.type || 'unknown';
-      
       if (message.media.photo) {
-        content = `[Photo: ${message.media.photo.id}]${content ? ' ' + content : ''}`;
+        mediaType = 'photo';
       } else if (message.media.document) {
-        content = `[Document: ${message.media.document.mimeType}]${content ? ' ' + content : ''}`;
-      } else {
-        content = `[Media: ${mediaType}]${content ? ' ' + content : ''}`;
+        mediaType = message.media.document.mimeType && message.media.document.mimeType.startsWith('video/')
+          ? 'video'
+          : 'document';
+      } else if (message.media.type) {
+        mediaType = message.media.type.toLowerCase();
       }
     }
     
-    // Create a new message record
+    // Get content text
+    const content = message.text || message.message || '';
+    
+    // Create new message record
     const newMessage = new Message({
       channel_id: channelId,
-      message_id: message.id.toString(),
+      message_id: message.id,
       content: content,
-      type: messageType,
-      created_at: new Date(message.date * 1000) || new Date(),
+      text: content,
+      date: new Date(message.date * 1000), // Convert Unix timestamp to JS Date
+      sender_id: message.fromId ? message.fromId.toString() : null,
+      sender_name: message.sender ? message.sender.toString() : null,
       is_deleted: false,
-      processed: true,
-      metadata: {
-        raw_text: message.text || '',
-        has_media: !!message.media,
-        media_type: message.media ? message.media.type : null,
-        account_id: accountId
-      }
+      media_type: mediaType,
+      media_urls: mediaUrls
     });
     
-    // Save the message to the database
+    // Save to database
     await newMessage.save();
     
     // Update channel last_message_at
     await Channel.findByIdAndUpdate(channelId, {
-      last_activity: new Date(),
       last_message_at: new Date()
     });
     
-    logger.info(`Added new message ${message.id} for channel ${channel.channel_id}`, {
-      source: 'message-listener'
+    logger.info(`Saved new message ${message.id} for channel ${channel.channel_id}`, {
+      source: 'message-listener',
+      messageId: message.id,
+      channelId
     });
     
     return newMessage;
   } catch (error) {
     logger.error(`Error processing new message: ${error.message}`, {
-      channelId,
-      messageId: message?.id,
       source: 'message-listener',
-      stack: error.stack
+      stack: error.stack,
+      channelId,
+      messageId: message?.id
     });
-    throw error;
+    return null;
   }
 };
 
@@ -203,30 +207,93 @@ const processDeletedMessage = async (channelId, messageId, accountId = null) => 
 };
 
 /**
- * Queue a message for processing with rate limiting
- * @param {Object} messageTask - Task object with message details
+ * Add a message task to the processing queue
+ * @param {Object} messageTask - Task containing message data to process
+ * @param {string} messageTask.type - 'new' or 'deleted'
+ * @param {string} messageTask.channelId - Channel ID in database
+ * @param {Object} messageTask.message - Message data for new messages
+ * @param {number} messageTask.messageId - Message ID for deleted messages
+ * @param {Object} messageTask.client - Optional Telegram client
+ * @param {string} messageTask.accountId - Account ID used for this task
+ * @param {boolean} messageTask.skipExistCheck - Skip checking if message exists (for performance)
+ * @returns {Promise<Object|null>} - Processed message or null
  */
 const queueMessageForProcessing = async (messageTask) => {
   try {
-    // Add to queue
-    messageQueue.queue.push(messageTask);
+    if (!messageTask || !messageTask.type || !messageTask.channelId) {
+      logger.error(`Invalid message task`, {
+        source: 'message-listener',
+        task: JSON.stringify(messageTask)
+      });
+      return null;
+    }
     
-    logger.debug(`Queued ${messageTask.type} message task for processing`, {
+    // Rate limiting check
+    if (!checkRateLimit(messageTask.accountId)) {
+      logger.warn(`Rate limit exceeded for account ${messageTask.accountId}, skipping message task`, {
+        source: 'message-listener',
+        type: messageTask.type
+      });
+      return null;
+    }
+    
+    // Update rate limit counter
+    updateRateLimit(messageTask.accountId);
+    
+    // Log queuing of the task
+    logger.debug(`Queuing message task: ${messageTask.type}`, {
       source: 'message-listener',
-      taskType: messageTask.type,
       channelId: messageTask.channelId,
       messageId: messageTask.type === 'new' ? messageTask.message?.id : messageTask.messageId
     });
     
-    // Start processing if not already in progress
+    // For immediate processing without queuing:
+    if (messageTask.type === 'new' && messageTask.message) {
+      if (!messageTask.skipExistCheck) {
+        // Check if message already exists
+        const existingMessage = await Message.findOne({
+          channel_id: messageTask.channelId,
+          message_id: messageTask.message.id
+        });
+        
+        if (existingMessage) {
+          logger.debug(`Message ${messageTask.message.id} already exists for channel ${messageTask.channelId}, skipping`, {
+            source: 'message-listener'
+          });
+          return null;
+        }
+      }
+      
+      return await processNewMessage(
+        messageTask.channelId,
+        messageTask.message,
+        messageTask.client,
+        messageTask.accountId
+      );
+    } else if (messageTask.type === 'deleted' && messageTask.messageId) {
+      return await processDeletedMessage(
+        messageTask.channelId,
+        messageTask.messageId,
+        messageTask.accountId
+      );
+    }
+    
+    // Add to queue otherwise
+    messageQueue.queue.push(messageTask);
+    
+    // Trigger queue processing if not already running
     if (!messageQueue.isProcessing) {
       processMessageQueue();
     }
+    
+    return null;
   } catch (error) {
-    logger.error(`Error queuing message: ${error.message}`, {
+    logger.error(`Error queueing message task: ${error.message}`, {
       source: 'message-listener',
-      stack: error.stack
+      stack: error.stack,
+      taskType: messageTask?.type
     });
+    return null;
   }
 };
 
@@ -296,16 +363,17 @@ const processMessageQueue = async () => {
 };
 
 /**
- * Extract only the necessary data from a message to avoid circular references
+ * Safely extract data from a Telegram message object to avoid circular references
+ * @param {Object} message - Telegram message object
+ * @returns {Object} - Extracted message data
  */
 const extractMessageData = (message) => {
   if (!message) return null;
   
   try {
-    // Create a new object with only the properties we need
     return {
       id: message.id,
-      text: message.text || '',
+      text: message.text || message.message || '',
       date: message.date,
       peerId: message.peerId ? {
         channelId: message.peerId.channelId,
@@ -313,236 +381,245 @@ const extractMessageData = (message) => {
       } : null,
       chatId: message.chatId,
       fromId: message.fromId,
+      sender: message.sender,
       media: message.media ? {
-        // Include minimal info about media to avoid circular refs
         type: message.media.constructor?.name || 'Unknown',
         photo: message.media.photo ? {
           id: message.media.photo.id,
           accessHash: message.media.photo.accessHash,
-          sizes: Array.isArray(message.media.photo.sizes) ? 
-            message.media.photo.sizes.map(s => ({
-              type: s.type,
-              w: s.w,
-              h: s.h
-            })) : []
         } : null,
         document: message.media.document ? {
           id: message.media.document.id,
           mimeType: message.media.document.mimeType,
-          size: message.media.document.size
         } : null
-      } : null,
-      replyTo: message.replyTo ? {
-        replyToMsgId: message.replyTo.replyToMsgId
       } : null
     };
   } catch (error) {
     logger.error(`Error extracting message data: ${error.message}`, {
       source: 'message-listener',
-      messageId: message.id,
-      stack: error.stack
+      stack: error.stack,
+      messageId: message.id
     });
     
-    // Fallback to basic info
+    // Return minimal data if extraction fails
     return {
       id: message.id,
-      text: typeof message.text === 'string' ? message.text : '[complex content]',
+      text: message.text || message.message || '',
       date: message.date
     };
   }
 };
 
 /**
- * Check if rate limit should be applied for an account
+ * Check if an account has exceeded rate limits
  * @param {string} accountId - Account ID
- * @returns {boolean} - Whether throttling should be applied
+ * @returns {boolean} - False if rate limit exceeded, true otherwise
  */
 const checkRateLimit = (accountId) => {
+  if (!accountId) return true;
+  
   const now = Date.now();
   
-  // Initialize tracking for this account if needed
-  if (!RATE_LIMIT.lastProcessed[accountId]) {
-    RATE_LIMIT.lastProcessed[accountId] = 0;
-    RATE_LIMIT.currentCount[accountId] = 0;
-    return false;
+  // Initialize rate limit tracking for this account if needed
+  if (!rateLimits.has(accountId)) {
+    rateLimits.set(accountId, {
+      count: 0,
+      resetAt: now + RATE_LIMIT.windowMs
+    });
+    return true;
   }
   
-  // Check time since last message and reset counter if needed
-  const timeSinceLast = now - RATE_LIMIT.lastProcessed[accountId];
-  if (timeSinceLast >= 60000) { // Reset after 1 minute
-    RATE_LIMIT.currentCount[accountId] = 0;
-    return false;
+  const limit = rateLimits.get(accountId);
+  
+  // Reset window if needed
+  if (now > limit.resetAt) {
+    limit.count = 0;
+    limit.resetAt = now + RATE_LIMIT.windowMs;
+    return true;
   }
   
-  // Check if we've exceeded rate limits
-  if (RATE_LIMIT.currentCount[accountId] >= RATE_LIMIT.messagesPerMinute) {
-    // Calculate remaining cooldown time
-    const cooldownNeeded = RATE_LIMIT.cooldownMs - timeSinceLast;
-    
-    if (cooldownNeeded > 0) {
-      logger.warn(`Rate limit reached for account ${accountId}, throttling for ${cooldownNeeded}ms`, {
-        source: 'message-listener'
-      });
-      return true;
-    }
-    
-    // If cooldown period has passed, allow processing
-    RATE_LIMIT.currentCount[accountId] = 0;
-    return false;
-  }
-  
-  return false;
+  // Check if within limit
+  return limit.count < RATE_LIMIT.maxMessagesPerMinute;
 };
 
 /**
- * Update rate limit tracking after processing a message
+ * Update rate limit counter for an account
  * @param {string} accountId - Account ID
  */
 const updateRateLimit = (accountId) => {
+  if (!accountId) return;
+  
   const now = Date.now();
   
-  // Initialize tracking for this account if needed
-  if (!RATE_LIMIT.lastProcessed[accountId]) {
-    RATE_LIMIT.lastProcessed[accountId] = now;
-    RATE_LIMIT.currentCount[accountId] = 1;
+  // Initialize rate limit tracking for this account if needed
+  if (!rateLimits.has(accountId)) {
+    rateLimits.set(accountId, {
+      count: 1,
+      resetAt: now + RATE_LIMIT.windowMs
+    });
     return;
   }
   
-  // Update last processed time and increment counter
-  RATE_LIMIT.lastProcessed[accountId] = now;
-  RATE_LIMIT.currentCount[accountId]++;
+  const limit = rateLimits.get(accountId);
+  
+  // Reset window if needed
+  if (now > limit.resetAt) {
+    limit.count = 1;
+    limit.resetAt = now + RATE_LIMIT.windowMs;
+  } else {
+    // Increment counter
+    limit.count++;
+  }
 };
 
 /**
- * Fetch message history for a channel
+ * Fetch message history for a channel and save new messages
+ * @param {string} channelId - Channel ID in our database
+ * @param {Object} account - Account object from database
+ * @param {Object} client - Telegram client
+ * @param {number} limit - Maximum number of messages to fetch
+ * @returns {Promise<Array>} - Array of saved messages
  */
 const fetchMessageHistory = async (channelId, account, client, limit = 20) => {
   try {
+    logger.info(`Fetching message history for channel ${channelId} using account ${account._id || account.phone_number}, limit: ${limit}`, {
+      source: 'message-listener'
+    });
+    
+    // Get channel from database
     const channel = await Channel.findById(channelId);
     if (!channel) {
-      logger.error(`Cannot fetch history: Channel ${channelId} not found in database`, {
+      logger.error(`Channel not found: ${channelId}`, {
         source: 'message-listener'
       });
-      return;
+      return [];
     }
-
-    logger.info(`Fetching message history for channel ${channel.channel_id}`, {
-      source: 'message-listener',
-      accountId: account._id.toString()
-    });
-
-    // Get the entity for this channel
+    
+    // Get channel entity
     let entity;
     try {
       entity = await client.getEntity(channel.channel_id);
-      if (!entity) {
-        logger.warn(`Could not get entity for channel ${channel.channel_id}`, {
-          source: 'message-listener'
-        });
-        return;
-      }
     } catch (error) {
-      logger.error(`Error getting entity for channel ${channel.channel_id}: ${error.message}`, {
+      logger.error(`Cannot get entity for channel ${channel.channel_id}: ${error.message}`, {
         source: 'message-listener',
         stack: error.stack
       });
-      return;
+      return [];
     }
-
-    // Fetch messages
+    
+    // Get message history
     let messages;
     try {
+      logger.debug(`Getting message history for ${entity.id} (${entity.title || entity.username})`, {
+        source: 'message-listener'
+      });
+      
       messages = await client.getMessages(entity, {
         limit: limit
       });
       
-      logger.info(`Fetched ${messages.length} messages from channel ${channel.channel_id}`, {
+      logger.info(`Retrieved ${messages.length} messages for channel ${channel.channel_id}`, {
         source: 'message-listener'
       });
     } catch (error) {
-      logger.error(`Error fetching messages for channel ${channel.channel_id}: ${error.message}`, {
+      logger.error(`Error getting messages for channel ${channel.channel_id}: ${error.message}`, {
         source: 'message-listener',
         stack: error.stack
       });
-      return;
+      return [];
     }
-
+    
+    if (!messages || !messages.length) {
+      logger.debug(`No messages found for channel ${channel.channel_id}`, {
+        source: 'message-listener'
+      });
+      return [];
+    }
+    
+    // Track message IDs to avoid duplicates
+    const processedMessageIds = new Set();
+    const savedMessages = [];
+    
     // Process each message
-    let processedCount = 0;
     for (const message of messages) {
-      if (!message || !message.id) continue;
-      
       try {
-        // Check if we already have this message
-        const existingMessage = await Message.findOne({
-          channel_id: channelId,
-          message_id: message.id.toString()
-        });
-
-        if (!existingMessage) {
-          // First extract message data to avoid circular references
-          const extractedMessage = extractMessageData(message);
-          
-          // Queue the message for processing
-          await queueMessageForProcessing({
-            type: 'new',
-            channelId,
-            message: extractedMessage,
-            client,
-            accountId: account._id.toString()
+        if (!message || !message.id) {
+          logger.debug(`Skipping message with no ID for channel ${channel.channel_id}`, {
+            source: 'message-listener'
           });
-          processedCount++;
+          continue;
         }
-      } catch (error) {
-        logger.error(`Error processing message ${message.id} from history: ${error.message}`, {
-          channelId,
+        
+        // Skip duplicates within this batch
+        if (processedMessageIds.has(message.id)) {
+          continue;
+        }
+        
+        processedMessageIds.add(message.id);
+        
+        // Extract safe message data
+        const messageData = extractMessageData(message);
+        
+        // Queue for processing
+        const result = await queueMessageForProcessing({
+          type: 'new',
+          channelId: channelId,
+          message: messageData,
+          client,
+          accountId: account._id.toString(),
+          skipExistCheck: false  // Always check if message exists to avoid duplicates
+        });
+        
+        if (result) {
+          savedMessages.push(result);
+        }
+      } catch (messageError) {
+        logger.error(`Error processing message ${message.id} for channel ${channel.channel_id}: ${messageError.message}`, {
           source: 'message-listener',
-          stack: error.stack
+          stack: messageError.stack
         });
       }
     }
     
-    logger.info(`Processed ${processedCount} new messages from history for channel ${channel.channel_id}`, {
+    // Update channel
+    await Channel.findByIdAndUpdate(channelId, {
+      last_message_at: new Date()
+    });
+    
+    logger.info(`Saved ${savedMessages.length} new messages from history for channel ${channel.channel_id}`, {
       source: 'message-listener'
     });
     
-    // Update channel last checked time
-    await Channel.findByIdAndUpdate(channelId, {
-      last_checked: new Date()
-    });
-    
-    return processedCount;
+    return savedMessages;
   } catch (error) {
-    logger.error(`Error fetching message history: ${error.message}`, {
-      channelId,
+    logger.error(`Error fetching message history for channel ${channelId}: ${error.message}`, {
       source: 'message-listener',
       stack: error.stack
     });
-    throw error;
+    return [];
   }
 };
 
-// Make sure messageListener is properly defined
+// Create a messageListener object for export
 const messageListener = {
   processNewMessage,
   processDeletedMessage,
-  fetchMessageHistory,
   queueMessageForProcessing,
   processMessageQueue,
-  RATE_LIMIT,
-  messageQueue
+  fetchMessageHistory,
+  extractMessageData,
+  checkRateLimit,
+  updateRateLimit
 };
 
-// Export functions and variables individually AND as an object
 module.exports = {
   processNewMessage,
   processDeletedMessage,
-  fetchMessageHistory,
   queueMessageForProcessing,
-  RATE_LIMIT,
-  messageQueue,
-  messageListener   // Add this to make the entire object available
-};
-
-// Also assign to module.exports directly for better compatibility
-Object.assign(module.exports, messageListener); 
+  processMessageQueue,
+  fetchMessageHistory,
+  extractMessageData,
+  checkRateLimit,
+  updateRateLimit,
+  messageListener
+}; 
