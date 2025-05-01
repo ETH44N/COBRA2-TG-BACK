@@ -1,11 +1,14 @@
 // channel-id-resolver.js
+const path = require('path');
 const mongoose = require('mongoose');
 require('dotenv').config();
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const Channel = require('./src/models/Channel');
-const Account = require('./src/models/Account');
-const logger = require('./src/utils/logger');
+
+// Use path.join to correctly resolve paths relative to the project root
+const Channel = require(path.join(__dirname, '../src/models/Channel'));
+const Account = require(path.join(__dirname, '../src/models/Account'));
+const logger = require(path.join(__dirname, '../src/utils/logger'));
 
 async function resolveChannelIds() {
   // Connect to MongoDB
