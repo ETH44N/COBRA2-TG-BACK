@@ -17,6 +17,9 @@ const channelSchema = new mongoose.Schema({
     required: false,
     trim: true
   },
+  numeric_id: {  // Add this field
+    type: String
+  },
   username: {
     type: String,
     trim: true
