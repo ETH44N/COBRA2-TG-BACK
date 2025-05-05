@@ -11,7 +11,8 @@
     "check-channels": "node src/scripts/checkChannelListeners.js",
     "fix-missing-ids": "node src/scripts/fixMissingNumericIds.js",
     "map-numeric-ids": "node src/scripts/mapNumericIds.js",
-    "identify-channels": "node src/scripts/identifyUnknownChannels.js"
+    "identify-channels": "node src/scripts/identifyUnknownChannels.js",
+    "map-active-channels": "node src/scripts/mapActiveChannels.js"
   },
   "dependencies": {
     "axios": "^1.5.0",

@@ -464,9 +464,33 @@ const startListening = async (channel, account) => {
               
               if (!global._unrecognizedChannelCache.has(cacheKey)) {
                 global._unrecognizedChannelCache.add(cacheKey);
-                logger.warn(`Received message from unrecognized channel ID: ${messageChannelId}`, {
+                
+                // Extract more information about the entity type and message
+                const peerInfo = {
+                  isUser: !!event.message.peerId?.userId,
+                  isChannel: !!event.message.peerId?.channelId,
+                  isChat: !!event.message.peerId?.chatId,
+                  entityType: event.message.peerId?.className || 'Unknown'
+                };
+                
+                // Extract safe message info (avoid logging full message content)
+                const messageInfo = {
+                  id: event.message.id,
+                  hasText: !!event.message.text,
+                  textLength: event.message.text?.length || 0,
+                  firstWords: event.message.text ? event.message.text.split(' ').slice(0, 3).join(' ') + '...' : '',
+                  fromId: event.message.fromId?.toString(),
+                  date: event.message.date,
+                  isForwarded: !!event.message.fwdFrom,
+                  hasMedia: !!event.message.media,
+                  mediaType: event.message.media?.className || 'None'
+                };
+                
+                logger.warn(`Received message from unrecognized ID: ${messageChannelId}`, {
                   source: 'channel-monitor',
                   context: {
+                    peer_info: peerInfo,
+                    message_info: messageInfo,
                     total_monitored_channels: monitoredChannelIds.length,
                     channel_id: messageChannelId
                   }
