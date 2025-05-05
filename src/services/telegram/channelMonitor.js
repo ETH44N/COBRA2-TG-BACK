@@ -408,7 +408,8 @@ const startListening = async (channel, account) => {
           }
           
           // Find the channel in our database by numeric_id instead of doing getEntity
-          const dbChannel = await Channel.findOne({ numeric_id: messageChannelId });
+          // Make sure we're comparing strings with strings
+          const dbChannel = await Channel.findOne({ numeric_id: messageChannelId.toString() });
           
           if (dbChannel) {
             logger.debug(`Received message event from channel ${dbChannel.channel_id} (numeric ID: ${messageChannelId})`, {
@@ -422,9 +423,36 @@ const startListening = async (channel, account) => {
               await processNewMessage(dbChannel._id, event.message, client);
             }
           } else {
-            logger.warn(`Received message from unrecognized channel ID: ${messageChannelId}`, {
-              source: 'channel-monitor'
+            // Try to match by other channel identifiers if numeric ID fails
+            const altChannel = await Channel.findOne({ 
+              $or: [
+                { channel_id: messageChannelId.toString() },
+                { username: messageChannelId.toString() }
+              ]
             });
+            
+            if (altChannel) {
+              // Update the numeric_id if we found the channel by other means
+              logger.info(`Found channel by alternate ID, updating numeric_id to ${messageChannelId} for ${altChannel.channel_id}`, {
+                source: 'channel-monitor'
+              });
+              
+              await Channel.updateOne(
+                { _id: altChannel._id },
+                { numeric_id: messageChannelId.toString() }
+              );
+              
+              // Process the message
+              if (event.message.deleted) {
+                await processDeletedMessage(altChannel._id, event.message.id);
+              } else {
+                await processNewMessage(altChannel._id, event.message, client);
+              }
+            } else {
+              logger.warn(`Received message from unrecognized channel ID: ${messageChannelId}`, {
+                source: 'channel-monitor'
+              });
+            }
           }
         }
       } catch (error) {
