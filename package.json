@@ -10,7 +10,8 @@
     "migrate": "node scripts/migrate.js",
     "check-channels": "node src/scripts/checkChannelListeners.js",
     "fix-missing-ids": "node src/scripts/fixMissingNumericIds.js",
-    "map-numeric-ids": "node src/scripts/mapNumericIds.js"
+    "map-numeric-ids": "node src/scripts/mapNumericIds.js",
+    "identify-channels": "node src/scripts/identifyUnknownChannels.js"
   },
   "dependencies": {
     "axios": "^1.5.0",

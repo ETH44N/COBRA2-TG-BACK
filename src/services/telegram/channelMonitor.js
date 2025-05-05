@@ -449,9 +449,29 @@ const startListening = async (channel, account) => {
                 await processNewMessage(altChannel._id, event.message, client);
               }
             } else {
-              logger.warn(`Received message from unrecognized channel ID: ${messageChannelId}`, {
-                source: 'channel-monitor'
-              });
+              // Get all channels we're monitoring to determine if this is excessive logging
+              const monitoredChannelIds = await Channel.find(
+                { is_active: true },
+                { numeric_id: 1 }
+              ).lean();
+              
+              // Only log this warning once per channel ID per session
+              // to avoid excessive logging
+              const cacheKey = `unrecognized_channel_${messageChannelId}`;
+              if (!global._unrecognizedChannelCache) {
+                global._unrecognizedChannelCache = new Set();
+              }
+              
+              if (!global._unrecognizedChannelCache.has(cacheKey)) {
+                global._unrecognizedChannelCache.add(cacheKey);
+                logger.warn(`Received message from unrecognized channel ID: ${messageChannelId}`, {
+                  source: 'channel-monitor',
+                  context: {
+                    total_monitored_channels: monitoredChannelIds.length,
+                    channel_id: messageChannelId
+                  }
+                });
+              }
             }
           }
         }
