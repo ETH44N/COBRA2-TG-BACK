@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add auto-refresh for message statistics
     function updateMessageStats() {
-        fetch('/api/messages/stats')
+        fetch('http://raspberrypi.local:3000/api/messages/stats')
             .then(response => response.json())
             .then(data => {
                 if (data.success) {

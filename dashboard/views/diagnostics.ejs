@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('log-analysis').innerHTML = 'Loading...';
         
         // Fetch diagnostic data
-        fetch('/api/diagnostic/messages')
+        fetch('http://raspberrypi.local:3000/api/diagnostic/messages')
             .then(response => response.json())
             .then(data => {
                 if (data.success) {

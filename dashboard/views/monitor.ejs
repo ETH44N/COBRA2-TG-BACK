@@ -272,7 +272,7 @@ function loadMonitoringStatus() {
   statusIndicator.className = 'badge bg-warning';
   statusIndicator.textContent = 'Checking...';
   
-  fetch('/api/channels/monitoring/status')
+  fetch('http://raspberrypi.local:3000/api/channels/monitoring/status')
     .then(response => response.json())
     .then(data => {
       if (data.success) {
@@ -415,7 +415,7 @@ function updateMissingNumericIdsTable(channels) {
 }
 
 function loadRecentLogs() {
-  fetch('/api/logs?source=channel-monitor&limit=100')
+  fetch('http://raspberrypi.local:3000/api/logs?source=channel-monitor&limit=100')
     .then(response => response.json())
     .then(data => {
       if (data.success) {
@@ -482,7 +482,7 @@ function clearLogSearch() {
 
 function fixAllChannelListeners() {
   if (confirm('Are you sure you want to fix all channels missing listeners?')) {
-    fetch('/api/channels/monitoring/fix', { method: 'POST' })
+    fetch('http://raspberrypi.local:3000/api/channels/monitoring/fix', { method: 'POST' })
       .then(response => response.json())
       .then(data => {
         if (data.success) {
@@ -504,7 +504,7 @@ function fixAllNumericIds() {
     document.getElementById('fix-numeric-ids-btn').disabled = true;
     document.getElementById('fix-numeric-ids-btn').innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Fixing...';
     
-    fetch('/api/channels/fix-numeric-ids', { method: 'POST' })
+    fetch('http://raspberrypi.local:3000/api/channels/fix-numeric-ids', { method: 'POST' })
       .then(response => response.json())
       .then(data => {
         if (data.success) {
@@ -532,7 +532,7 @@ function fixChannelListener(channelId) {
   document.getElementById('fix-channel-spinner').style.display = 'block';
   document.getElementById('fix-channel-result').style.display = 'none';
   
-  fetch(`/api/channels/${channelId}/fix-listener`, { method: 'POST' })
+  fetch(`http://raspberrypi.local:3000/api/channels/${channelId}/fix-listener`, { method: 'POST' })
     .then(response => response.json())
     .then(data => {
       document.getElementById('fix-channel-spinner').style.display = 'none';
@@ -575,7 +575,7 @@ function fixChannelNumericId(channelId) {
   document.getElementById('fix-channel-spinner').style.display = 'block';
   document.getElementById('fix-channel-result').style.display = 'none';
   
-  fetch(`/api/channels/${channelId}/fix-numeric-id`, { method: 'POST' })
+  fetch(`http://raspberrypi.local:3000/api/channels/${channelId}/fix-numeric-id`, { method: 'POST' })
     .then(response => response.json())
     .then(data => {
       document.getElementById('fix-channel-spinner').style.display = 'none';
@@ -622,7 +622,7 @@ function checkSpecificChannel() {
   document.getElementById('check-channel-btn').disabled = true;
   document.getElementById('check-channel-btn').innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...';
   
-  fetch(`/api/channels/search?term=${encodeURIComponent(searchTerm)}`)
+  fetch(`http://raspberrypi.local:3000/api/channels/search?term=${encodeURIComponent(searchTerm)}`)
     .then(response => response.json())
     .then(data => {
       document.getElementById('check-channel-btn').disabled = false;
