@@ -321,21 +321,38 @@ app.get('/accounts', async (req, res) => {
     // Get accounts
     const accounts = await Account.find(filter).sort(sortOptions).lean();
     
-    // Count assigned channels for each account
+    // Count assigned channels for each account using the assignments collection
     const accountIds = accounts.map(a => a._id);
     const assignmentCounts = await Assignment.aggregate([
       { $match: { account_id: { $in: accountIds }, status: 'active' } },
       { $group: { _id: '$account_id', count: { $sum: 1 } } }
     ]);
     
-    // Add channel counts to accounts
-    const accountChannelMap = Object.fromEntries(
-      assignmentCounts.map(a => [a._id.toString(), a.count])
-    );
+    // Map of account ID to its channel count
+    const accountChannelMap = {};
+    assignmentCounts.forEach(item => {
+      if (item._id) {
+        accountChannelMap[item._id.toString()] = item.count;
+      }
+    });
     
+    // Update each account with its channel count and ensure last_active is correctly formatted
     accounts.forEach(account => {
       account.actual_channel_count = accountChannelMap[account._id.toString()] || 0;
+      
+      // Make sure last_active is a proper date
+      if (account.last_active && !(account.last_active instanceof Date)) {
+        try {
+          account.last_active = new Date(account.last_active);
+        } catch (e) {
+          console.warn(`Invalid date for account ${account._id}:`, e);
+          account.last_active = null;
+        }
+      }
     });
+    
+    // Debug output for troubleshooting
+    console.log(`Processed ${accounts.length} accounts with channel assignments`);
     
     res.render('accounts', {
       accounts,
@@ -728,7 +745,8 @@ app.get('/api/diagnostic/messages', async (req, res) => {
     // Direct MongoDB client for diagnostic purposes
     const client = new MongoClient(process.env.MONGODB_URI, {
       useNewUrlParser: true,
-      useUnifiedTopology: true
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000 // Shorter timeout for diagnostics
     });
     
     await client.connect();
@@ -770,11 +788,21 @@ app.get('/api/diagnostic/messages', async (req, res) => {
             Object.keys(doc).forEach(key => allFields.add(key));
           });
           
-          // Count how many documents have each field
-          for (const field of allFields) {
-            const fieldCount = await db.collection('messages').countDocuments({ [field]: { $exists: true } });
-            result.direct.fields[field] = fieldCount;
-          }
+          // Count how many documents have each field - limit field analysis to avoid timeouts
+          const fieldPromises = Array.from(allFields).slice(0, 10).map(async field => {
+            try {
+              const fieldCount = await db.collection('messages').countDocuments({ [field]: { $exists: true } });
+              return [field, fieldCount];
+            } catch (err) {
+              console.warn(`Error counting field ${field}:`, err);
+              return [field, 'Error counting'];
+            }
+          });
+          
+          const fieldResults = await Promise.all(fieldPromises);
+          fieldResults.forEach(([field, count]) => {
+            result.direct.fields[field] = count;
+          });
         }
       } catch (err) {
         result.direct.error = err.message;
@@ -791,18 +819,30 @@ app.get('/api/diagnostic/messages', async (req, res) => {
     
     // Check message listener status by crawling logs
     try {
-      const recentLogs = await db.collection('logs').find({
-        source: 'message-listener',
-        timestamp: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
-      }).sort({ timestamp: -1 }).limit(50).toArray();
+      // First check if logs collection exists
+      const logsCollectionExists = await db.listCollections({ name: 'logs' }).hasNext();
       
-      result.logs = {
-        count: recentLogs.length,
-        newMessageLogs: recentLogs.filter(log => log.message && log.message.includes('Saved message')).length,
-        sample: recentLogs.slice(0, 10)
-      };
+      if (logsCollectionExists) {
+        const recentLogs = await db.collection('logs').find({
+          source: 'message-listener',
+          timestamp: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+        }).sort({ timestamp: -1 }).limit(50).toArray();
+        
+        result.logs = {
+          count: recentLogs.length,
+          newMessageLogs: recentLogs.filter(log => log.message && log.message.includes('Saved message')).length,
+          sample: recentLogs.slice(0, 10)
+        };
+      } else {
+        result.logs = { 
+          error: 'Logs collection does not exist',
+          count: 0,
+          newMessageLogs: 0,
+          sample: []
+        };
+      }
     } catch (err) {
-      result.logs = { error: err.message };
+      result.logs = { error: err.message, count: 0, newMessageLogs: 0, sample: [] };
     }
     
     await client.close();

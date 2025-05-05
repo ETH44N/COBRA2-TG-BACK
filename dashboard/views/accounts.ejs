@@ -60,7 +60,7 @@
               <div class="h5 mb-0 fw-bold text-gray-800">
                 <%= 
                   accounts.reduce((total, account) => {
-                    return total + (account.channelCount || 0);
+                    return total + (account.actual_channel_count || 0);
                   }, 0)
                 %>
               </div>
@@ -149,15 +149,15 @@
                     </span>
                   </td>
                   <td>
-                    <% if (account.channelCount && account.channelCount > 0) { %>
-                      <a href="/channels?accountId=<%= account._id %>"><%= account.channelCount %> channels</a>
+                    <% if (account.actual_channel_count && account.actual_channel_count > 0) { %>
+                      <a href="/channels?accountId=<%= account._id %>"><%= account.actual_channel_count %> channels</a>
                     <% } else { %>
                       <span class="text-muted">0 channels</span>
                     <% } %>
                   </td>
                   <td>
-                    <% if (account.lastLoginDate) { %>
-                      <%= new Date(account.lastLoginDate).toLocaleString() %>
+                    <% if (account.last_active) { %>
+                      <%= moment(account.last_active).fromNow() %>
                     <% } else { %>
                       Never
                     <% } %>
