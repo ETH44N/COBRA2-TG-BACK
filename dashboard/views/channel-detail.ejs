@@ -53,9 +53,9 @@
                     <li class="list-group-item d-flex justify-content-between align-items-center">
                         <span><strong>Monitored By:</strong></span>
                         <span>
-                            <% if (channel.account) { %>
-                                <a href="/accounts/<%= channel.account._id %>">
-                                    <%= channel.account.username || 'Account ' + channel.account._id %>
+                            <% if (channel.joined_by_account_id) { %>
+                                <a href="/accounts/<%= channel.joined_by_account_id._id %>">
+                                    <%= channel.joined_by_account_id.phone_number || channel.joined_by_account_id.username || 'Account ' + channel.joined_by_account_id._id %>
                                 </a>
                             <% } else { %>
                                 <span class="text-muted">Not assigned</span>
@@ -107,7 +107,12 @@
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Recent Messages</h5>
-        <a href="#" class="btn btn-sm btn-outline-primary">View All Messages</a>
+        <div>
+            <a href="/api/channels/<%= channel._id %>/export-messages" class="btn btn-sm btn-success">
+                <i class="bi bi-download me-1"></i> Export to CSV
+            </a>
+            <a href="#" class="btn btn-sm btn-outline-primary">View All Messages</a>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -214,131 +219,190 @@ document.addEventListener('DOMContentLoaded', function() {
         location.reload();
     });
     
-    // Message Activity Chart
+    // Message Activity Chart - Daily message counts
     const messageActivity = <%= JSON.stringify(messageStats.dailyActivity || []) %>;
     const labels = messageActivity.map(item => item._id);
     const data = messageActivity.map(item => item.count);
     
-    const activityCtx = document.getElementById('messageActivityChart').getContext('2d');
-    new Chart(activityCtx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Messages per Day',
-                data: data,
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 2,
-                tension: 0.1,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        precision: 0
+    if (document.getElementById('messageActivityChart')) {
+        const activityCtx = document.getElementById('messageActivityChart').getContext('2d');
+        new Chart(activityCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Messages per Day',
+                    data: data,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 2,
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+    }
     
     // Message Types Chart
     const messageTypes = <%= JSON.stringify(messageStats.messageTypes || []) %>;
-    const typeLabels = messageTypes.map(type => type._id || 'text');
-    const typeData = messageTypes.map(type => type.count);
-    const backgroundColors = [
-        'rgba(54, 162, 235, 0.5)',
-        'rgba(255, 99, 132, 0.5)',
-        'rgba(255, 206, 86, 0.5)',
-        'rgba(75, 192, 192, 0.5)',
-        'rgba(153, 102, 255, 0.5)',
-        'rgba(255, 159, 64, 0.5)'
-    ];
-    
-    const typesCtx = document.getElementById('messageTypesChart').getContext('2d');
-    new Chart(typesCtx, {
-        type: 'pie',
-        data: {
-            labels: typeLabels,
-            datasets: [{
-                data: typeData,
-                backgroundColor: backgroundColors,
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom'
+    if (document.getElementById('messageTypesChart') && messageTypes.length > 0) {
+        const typeLabels = messageTypes.map(item => item._id === 'none' ? 'Text Only' : 
+                                          item._id === null ? 'Unknown' : 
+                                          item._id.charAt(0).toUpperCase() + item._id.slice(1));
+        const typeData = messageTypes.map(item => item.count);
+        const typeColors = [
+            'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 99, 132, 0.8)',
+            'rgba(255, 206, 86, 0.8)',
+            'rgba(75, 192, 192, 0.8)',
+            'rgba(153, 102, 255, 0.8)',
+            'rgba(255, 159, 64, 0.8)'
+        ];
+        
+        const typesCtx = document.getElementById('messageTypesChart').getContext('2d');
+        new Chart(typesCtx, {
+            type: 'doughnut',
+            data: {
+                labels: typeLabels,
+                datasets: [{
+                    data: typeData,
+                    backgroundColor: typeColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    }
                 }
             }
-        }
-    });
+        });
+    }
     
     // Top Senders Chart
     const topSenders = <%= JSON.stringify(messageStats.topSenders || []) %>;
-    const senderLabels = topSenders.map(sender => sender._id || 'Unknown');
-    const senderData = topSenders.map(sender => sender.count);
-    
-    const sendersCtx = document.getElementById('topSendersChart').getContext('2d');
-    new Chart(sendersCtx, {
-        type: 'bar',
-        data: {
-            labels: senderLabels,
-            datasets: [{
-                label: 'Messages Sent',
-                data: senderData,
-                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        precision: 0
+    if (document.getElementById('topSendersChart') && topSenders.length > 0) {
+        const senderLabels = topSenders.map(item => item._id || 'Unknown');
+        const senderData = topSenders.map(item => item.count);
+        
+        const sendersCtx = document.getElementById('topSendersChart').getContext('2d');
+        new Chart(sendersCtx, {
+            type: 'bar',
+            data: {
+                labels: senderLabels,
+                datasets: [{
+                    label: 'Messages',
+                    data: senderData,
+                    backgroundColor: 'rgba(75, 192, 192, 0.8)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
                     }
                 }
-            },
-            plugins: {
-                legend: {
-                    display: false
-                }
             }
-        }
-    });
+        });
+    }
     
-    // Message details modal
+    // Message Details functionality
     const messageDetailsBtns = document.querySelectorAll('.message-details-btn');
     messageDetailsBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             const messageId = this.getAttribute('data-message-id');
-            
-            // Here you would normally fetch the message details from the server
-            // For now, we'll just show a placeholder
-            const messageDetailsContent = document.getElementById('messageDetailsContent');
-            messageDetailsContent.innerHTML = `
-                <div class="alert alert-info">
-                    Loading details for message ID: ${messageId}...
-                    <br>
-                    <small>Note: API endpoint for message details not yet implemented.</small>
-                </div>
-            `;
-            
-            // Show the modal
             const messageModal = new bootstrap.Modal(document.getElementById('messageDetailsModal'));
+            
+            // Find the message in the recentMessages array
+            const messages = <%= JSON.stringify(recentMessages || []) %>;
+            const message = messages.find(m => m._id === messageId);
+            
+            if (message) {
+                let content = `
+                    <div class="mb-4">
+                        <h6>Basic Information</h6>
+                        <table class="table table-bordered">
+                            <tr>
+                                <th width="150">Message ID</th>
+                                <td>${message.message_id}</td>
+                            </tr>
+                            <tr>
+                                <th>Sender</th>
+                                <td>${message.sender_name || 'Unknown'}</td>
+                            </tr>
+                            <tr>
+                                <th>Date</th>
+                                <td>${new Date(message.date).toLocaleString()}</td>
+                            </tr>
+                            <tr>
+                                <th>Status</th>
+                                <td>${message.is_deleted ? '<span class="badge bg-danger">Deleted</span>' : '<span class="badge bg-success">Active</span>'}</td>
+                            </tr>
+                            <tr>
+                                <th>Media Type</th>
+                                <td>${message.media_type === 'none' ? 'Text Only' : (message.media_type || 'Unknown')}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    
+                    <div>
+                        <h6>Content</h6>
+                        <div class="p-3 bg-light rounded">
+                            <pre class="mb-0" style="white-space: pre-wrap;">${message.text || message.content || 'No text content'}</pre>
+                        </div>
+                    </div>
+                `;
+                
+                // If the message has raw data, add a section for it
+                if (message.raw_data) {
+                    try {
+                        const rawData = JSON.parse(message.raw_data);
+                        content += `
+                            <div class="mt-4">
+                                <h6>Raw Data</h6>
+                                <div class="p-3 bg-light rounded">
+                                    <pre class="mb-0" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${JSON.stringify(rawData, null, 2)}</pre>
+                                </div>
+                            </div>
+                        `;
+                    } catch (e) {
+                        console.error('Failed to parse raw data:', e);
+                    }
+                }
+                
+                document.getElementById('messageDetailsContent').innerHTML = content;
+            } else {
+                document.getElementById('messageDetailsContent').innerHTML = '<div class="alert alert-danger">Message not found</div>';
+            }
+            
             messageModal.show();
         });
     });

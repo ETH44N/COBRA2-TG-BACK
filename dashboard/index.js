@@ -465,9 +465,12 @@ app.get('/channels/:id', async (req, res) => {
         active: ''
       });
     }
+
+    // Set account variable for backward compatibility with the template
+    channel.account = channel.joined_by_account_id;
     
     // Get recent messages for this channel
-    const messages = await Message.find({ channel_id: channelId })
+    const recentMessages = await Message.find({ channel_id: channelId })
       .sort({ date: -1 })
       .limit(50)
       .lean();
@@ -479,16 +482,74 @@ app.get('/channels/:id', async (req, res) => {
       is_deleted: true
     });
     
+    // Calculate daily activity for the chart (last 14 days)
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    
+    const dailyActivity = await Message.aggregate([
+      { 
+        $match: { 
+          channel_id: channelId,
+          date: { $gte: twoWeeksAgo } 
+        } 
+      },
+      {
+        $group: {
+          _id: { 
+            $dateToString: { format: "%Y-%m-%d", date: "$date" } 
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+    
+    // Get message types distribution
+    const messageTypes = await Message.aggregate([
+      { $match: { channel_id: channelId } },
+      { 
+        $group: {
+          _id: "$media_type",
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+    
+    // Get top senders
+    const topSenders = await Message.aggregate([
+      { $match: { channel_id: channelId } },
+      { 
+        $group: {
+          _id: "$sender_name",
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+    
     const messageStats = {
       total: totalMessages,
       deleted: deletedMessages,
-      active: totalMessages - deletedMessages
+      active: totalMessages - deletedMessages,
+      dailyActivity: dailyActivity,
+      messageTypes: messageTypes,
+      topSenders: topSenders
     };
+    
+    // Get assignment information
+    const assignment = await Assignment.findOne({
+      channel_id: channelId,
+      status: 'active'
+    }).lean();
     
     res.render('channel-detail', {
       channel,
-      messages,
+      recentMessages, // Make sure this variable is passed to the template
+      messages: recentMessages, // For backward compatibility
       messageStats,
+      assignment,
       title: `Channel: ${channel.name || channel.username || channel.channel_id}`,
       active: 'channels'
     });
@@ -857,6 +918,64 @@ app.get('/api/diagnostic/messages', async (req, res) => {
       success: false,
       error: 'Diagnostic failed',
       message: error.message
+    });
+  }
+});
+
+// Export channel messages as CSV
+app.get('/api/channels/:id/export-messages', async (req, res) => {
+  try {
+    const channelId = req.params.id;
+    
+    // Verify channel exists
+    const channel = await Channel.findById(channelId);
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: 'Channel not found'
+      });
+    }
+    
+    // Get all messages for this channel
+    const messages = await Message.find({ channel_id: channelId })
+      .sort({ date: 1 }) // Oldest first
+      .lean();
+    
+    if (messages.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No messages found for this channel'
+      });
+    }
+    
+    // Generate CSV header
+    let csv = 'Message ID,Date,Sender,Content,Is Deleted,Media Type\n';
+    
+    // Add rows
+    messages.forEach(message => {
+      const date = message.date ? new Date(message.date).toISOString() : '';
+      const sender = message.sender_name ? message.sender_name.replace(/,/g, ' ') : 'Unknown';
+      
+      // Sanitize content (remove commas, newlines, etc.)
+      const content = message.text ? 
+        `"${message.text.replace(/"/g, '""').replace(/\n/g, ' ')}"` : 
+        '';
+      
+      csv += `${message.message_id},${date},${sender},${content},${message.is_deleted},${message.media_type || 'none'}\n`;
+    });
+    
+    // Set headers for file download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=${channel.channel_id}_messages.csv`);
+    
+    // Send CSV data
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting messages:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export messages',
+      error: error.message
     });
   }
 });
