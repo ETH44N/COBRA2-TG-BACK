@@ -140,7 +140,7 @@
           <div class="row align-items-center">
             <div class="col mr-2">
               <div class="text-xs fw-bold text-primary text-uppercase mb-1">Monitored Channels</div>
-              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.channelCount || 0 %></div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= channels ? channels.length : 0 %></div>
             </div>
             <div class="col-auto">
               <i class="bi bi-broadcast fa-2x text-gray-300"></i>
@@ -156,7 +156,7 @@
           <div class="row align-items-center">
             <div class="col mr-2">
               <div class="text-xs fw-bold text-success text-uppercase mb-1">Total Messages</div>
-              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.messageCount || 0 %></div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= totalMessages || 0 %></div>
             </div>
             <div class="col-auto">
               <i class="bi bi-chat-left-text fa-2x text-gray-300"></i>
@@ -172,7 +172,7 @@
           <div class="row align-items-center">
             <div class="col mr-2">
               <div class="text-xs fw-bold text-info text-uppercase mb-1">Active Channels</div>
-              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.activeChannelCount || 0 %></div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= channels ? channels.filter(c => c.status === 'active').length : 0 %></div>
             </div>
             <div class="col-auto">
               <i class="bi bi-check-circle fa-2x text-gray-300"></i>
@@ -188,7 +188,7 @@
           <div class="row align-items-center">
             <div class="col mr-2">
               <div class="text-xs fw-bold text-warning text-uppercase mb-1">Inactive Channels</div>
-              <div class="h5 mb-0 fw-bold text-gray-800"><%= account && account.inactiveChannelCount || 0 %></div>
+              <div class="h5 mb-0 fw-bold text-gray-800"><%= channels ? channels.filter(c => c.status !== 'active').length : 0 %></div>
             </div>
             <div class="col-auto">
               <i class="bi bi-exclamation-triangle fa-2x text-gray-300"></i>
@@ -243,7 +243,7 @@
                       <div>
                         <div class="fw-bold"><%= channel.title || 'Unknown Channel' %></div>
                         <div class="small text-muted">
-                          <%= channel.username ? '@' + channel.username : channel.channelId %>
+                          <%= channel.username ? '@' + channel.username : (channel.numeric_id || channel.channelId) %>
                         </div>
                       </div>
                     </div>
@@ -259,10 +259,22 @@
                     </span>
                   </td>
                   <td>
-                    <%= channel.messageCount || 0 %>
+                    <a href="/messages?channelId=<%= channel._id %>" class="text-decoration-none">
+                      <%= channel.messageCount || 0 %>
+                      <% if (channel.messageCount > 0) { %>
+                        <i class="bi bi-box-arrow-up-right small ms-1"></i>
+                      <% } %>
+                    </a>
                   </td>
                   <td>
-                    <%= channel.lastActivityDate ? new Date(channel.lastActivityDate).toLocaleString() : 'Never' %>
+                    <% if (channel.lastMessageDate) { %>
+                      <span data-bs-toggle="tooltip" title="<%= new Date(channel.lastMessageDate).toLocaleString() %>">
+                        <%= new Date(channel.lastMessageDate).toLocaleDateString() %>
+                        <span class="small text-muted"><%= new Date(channel.lastMessageDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) %></span>
+                      </span>
+                    <% } else { %>
+                      <span class="text-muted">No messages</span>
+                    <% } %>
                   </td>
                   <td>
                     <div class="btn-group" role="group">
@@ -500,6 +512,12 @@
 
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+    
     // Refresh button
     document.getElementById('refreshAccountBtn').addEventListener('click', function() {
       window.location.reload();

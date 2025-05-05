@@ -382,6 +382,7 @@ app.get('/channels', async (req, res) => {
     const status = req.query.status;
     const sort = req.query.sort || 'name';
     const dir = req.query.dir || 'asc';
+    const accountId = req.query.accountId; // Get accountId from query string
     
     // Prepare filter
     let filter = {};
@@ -389,6 +390,27 @@ app.get('/channels', async (req, res) => {
       filter.is_active = true;
     } else if (status === 'inactive') {
       filter.is_active = false;
+    }
+    
+    // If accountId is provided, get the channel IDs managed by this account
+    let channelIdsForAccount = [];
+    let filteringAccount = null;
+    
+    if (accountId) {
+      // Find the account to display its information
+      filteringAccount = await Account.findById(accountId).lean();
+      
+      // Get assignments for this account
+      const assignments = await Assignment.find({
+        account_id: accountId,
+        status: 'active'
+      }).lean();
+      
+      // Extract channel IDs
+      channelIdsForAccount = assignments.map(a => a.channel_id);
+      
+      // Only show channels for this account
+      filter._id = { $in: channelIdsForAccount };
     }
     
     // Prepare sort
@@ -429,12 +451,16 @@ app.get('/channels', async (req, res) => {
     
     res.render('channels', {
       channels: transformedChannels,
+      filteringAccount, // Pass the account we're filtering by
       filters: {
         status,
         sort,
-        dir
+        dir,
+        accountId // Pass accountId back to template
       },
-      title: 'Monitored Channels',
+      title: filteringAccount 
+        ? `Channels for ${filteringAccount.phone_number || filteringAccount.username || 'Account ' + filteringAccount._id}`
+        : 'Monitored Channels',
       active: 'channels'
     });
   } catch (error) {
@@ -586,12 +612,67 @@ app.get('/accounts/:id', async (req, res) => {
       status: 'active'
     }).populate('channel_id').lean();
     
-    const channels = assignments.map(a => a.channel_id).filter(Boolean);
+    const channelIds = assignments.map(a => a.channel_id._id).filter(Boolean);
+    
+    // Get message counts for each channel
+    const messageCounts = await Message.aggregate([
+      { $match: { channel_id: { $in: channelIds } } },
+      { $group: { _id: '$channel_id', count: { $sum: 1 } } }
+    ]);
+    
+    // Create a map for easy lookup
+    const channelMessageCountMap = {};
+    messageCounts.forEach(item => {
+      channelMessageCountMap[item._id.toString()] = item.count;
+    });
+    
+    // Get last message date for each channel
+    const lastMessageDates = await Message.aggregate([
+      { $match: { channel_id: { $in: channelIds } } },
+      { $sort: { date: -1 } },
+      { $group: { _id: '$channel_id', lastDate: { $first: '$date' } } }
+    ]);
+    
+    // Create a map for easy lookup
+    const channelLastMessageMap = {};
+    lastMessageDates.forEach(item => {
+      channelLastMessageMap[item._id.toString()] = item.lastDate;
+    });
+    
+    // Enrich channel data with statistics
+    const enrichedChannels = assignments
+      .map(assignment => {
+        if (!assignment.channel_id) return null;
+        
+        const channelId = assignment.channel_id._id.toString();
+        return {
+          ...assignment.channel_id,
+          messageCount: channelMessageCountMap[channelId] || 0,
+          lastMessageDate: channelLastMessageMap[channelId] || null,
+          assignment: {
+            ...assignment,
+            channel_id: undefined // Remove to avoid circular reference
+          }
+        };
+      })
+      .filter(Boolean) // Remove null entries
+      .sort((a, b) => {
+        // Sort by last message date (most recent first)
+        const dateA = a.lastMessageDate || a.updated_at || 0;
+        const dateB = b.lastMessageDate || b.updated_at || 0;
+        return new Date(dateB) - new Date(dateA);
+      });
+    
+    // Get total message count
+    const totalMessages = enrichedChannels.reduce((total, channel) => {
+      return total + (channel.messageCount || 0);
+    }, 0);
     
     res.render('account-detail', {
       account,
-      channels,
-      title: `Account: ${account.username || account.phone_number}`,
+      channels: enrichedChannels,
+      totalMessages,
+      title: `Account: ${account.phone_number || account.username || account._id}`,
       active: 'accounts'
     });
   } catch (error) {
