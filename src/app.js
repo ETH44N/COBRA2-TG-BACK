@@ -27,6 +27,20 @@ applySecurityMiddleware(app);
 // Middleware
 app.use(express.json());
 
+// Add CORS middleware to allow the dashboard to access the API
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*'); // Allow requests from any origin
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  next();
+});
+
 // Routes
 app.use('/api/channels', channelRoutes);
 app.use('/api/accounts', accountRoutes);
