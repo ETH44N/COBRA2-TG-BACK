@@ -378,6 +378,19 @@ const joinChannel = async (channel, account) => {
  */
 const startListening = async (channel, account) => {
   try {
+    // Check if there's already an active listener for this channel
+    const listenerKey = channel._id.toString();
+    if (activeListeners.has(listenerKey)) {
+      logger.warn(`Channel ${channel.channel_id} already has an active listener, removing old one first`, {
+        source: 'channel-monitor'
+      });
+      
+      // Remove old listener to prevent duplicates
+      const { client, eventHandler } = activeListeners.get(listenerKey);
+      client.removeEventHandler(eventHandler);
+      activeListeners.delete(listenerKey);
+    }
+    
     // Get client for account
     const client = await getClient(account);
     
@@ -398,7 +411,7 @@ const startListening = async (channel, account) => {
           const dbChannel = await Channel.findOne({ numeric_id: messageChannelId });
           
           if (dbChannel) {
-            logger.debug(`Received message event from channel ${dbChannel.channel_id}`, {
+            logger.debug(`Received message event from channel ${dbChannel.channel_id} (numeric ID: ${messageChannelId})`, {
               source: 'channel-monitor'
             });
             
@@ -408,6 +421,10 @@ const startListening = async (channel, account) => {
             } else {
               await processNewMessage(dbChannel._id, event.message, client);
             }
+          } else {
+            logger.warn(`Received message from unrecognized channel ID: ${messageChannelId}`, {
+              source: 'channel-monitor'
+            });
           }
         }
       } catch (error) {
@@ -422,10 +439,12 @@ const startListening = async (channel, account) => {
     client.addEventHandler(eventHandler, new NewMessage({}));
     
     // Store listener
-    activeListeners.set(channel._id.toString(), {
+    activeListeners.set(listenerKey, {
       client,
       eventHandler,
-      accountId: account._id.toString()
+      accountId: account._id.toString(),
+      channelId: channel.channel_id,
+      startedAt: new Date()
     });
     
     logger.info(`Started listening to channel ${channel.channel_id} with account ${account.phone_number}`, {
@@ -434,10 +453,179 @@ const startListening = async (channel, account) => {
     
     // Update channel last_checked
     await Channel.findByIdAndUpdate(channel._id, {
-      last_checked: new Date()
+      last_checked: new Date(),
+      is_active: true,  // Mark as active since we're now listening
+      last_error: null,  // Clear any previous errors
+      last_error_at: null
     });
   } catch (error) {
     logger.error(`Error starting listener for channel ${channel.channel_id}: ${error.message}`, {
+      source: 'channel-monitor',
+      context: { error: error.stack }
+    });
+    
+    // Update channel status
+    await Channel.findByIdAndUpdate(channel._id, {
+      last_error: error.message,
+      last_error_at: new Date()
+    });
+    
+    throw error;
+  }
+};
+
+/**
+ * Get status of all monitored channels
+ * @returns {Object} Channel monitoring statistics
+ */
+const getMonitoringStatus = async () => {
+  try {
+    // Get counts
+    const totalChannels = await Channel.countDocuments({});
+    const activeChannels = await Channel.countDocuments({ is_active: true });
+    
+    // Get all accounts
+    const accounts = await Account.find({ status: 'active' });
+    
+    // Get assignments
+    const assignments = await AccountChannelAssignment.find({})
+      .populate('channel_id')
+      .populate('account_id');
+    
+    // Count listeners
+    const activeListenerCount = activeListeners.size;
+    
+    // Track channels with and without listeners
+    const channelsWithoutListeners = [];
+    const channelsNoNumericId = [];
+    
+    // Check each active channel
+    const allActiveChannels = await Channel.find({ is_active: true });
+    
+    for (const channel of allActiveChannels) {
+      const listenerKey = channel._id.toString();
+      if (!activeListeners.has(listenerKey)) {
+        channelsWithoutListeners.push({
+          id: channel._id,
+          channel_id: channel.channel_id,
+          name: channel.name
+        });
+      }
+      
+      if (!channel.numeric_id) {
+        channelsNoNumericId.push({
+          id: channel._id,
+          channel_id: channel.channel_id,
+          name: channel.name
+        });
+      }
+    }
+    
+    // Get account distribution
+    const accountStats = accounts.map(account => {
+      const assignedChannels = assignments.filter(
+        a => a.account_id._id.toString() === account._id.toString()
+      );
+      
+      // Count active listeners for this account
+      const listenersForAccount = Array.from(activeListeners.values())
+        .filter(listener => listener.accountId === account._id.toString());
+      
+      return {
+        phone_number: account.phone_number,
+        assigned_channel_count: assignedChannels.length,
+        active_listener_count: listenersForAccount.length
+      };
+    });
+    
+    return {
+      total_channels: totalChannels,
+      active_channels: activeChannels,
+      monitored_channels: activeListenerCount,
+      channels_without_listeners: channelsWithoutListeners,
+      channels_missing_numeric_id: channelsNoNumericId,
+      account_stats: accountStats
+    };
+  } catch (error) {
+    logger.error(`Error getting monitoring status: ${error.message}`, {
+      source: 'channel-monitor',
+      context: { error: error.stack }
+    });
+    throw error;
+  }
+};
+
+/**
+ * Fix monitoring for channels that should be active but aren't being monitored
+ */
+const fixChannelMonitoring = async () => {
+  try {
+    // Get all active channels
+    const activeChannels = await Channel.find({ is_active: true });
+    
+    logger.info(`Checking monitoring status for ${activeChannels.length} active channels`, {
+      source: 'channel-monitor'
+    });
+    
+    let fixedCount = 0;
+    
+    // Check each active channel
+    for (const channel of activeChannels) {
+      const listenerKey = channel._id.toString();
+      
+      // If no active listener, restart it
+      if (!activeListeners.has(listenerKey)) {
+        logger.warn(`Channel ${channel.channel_id} is active but has no listener, restarting`, {
+          source: 'channel-monitor'
+        });
+        
+        // Get assignment
+        const assignment = await AccountChannelAssignment.findOne({
+          channel_id: channel._id
+        }).populate('account_id');
+        
+        if (!assignment) {
+          logger.warn(`Channel ${channel.channel_id} has no account assignment, reassigning`, {
+            source: 'channel-monitor'
+          });
+          
+          // Reassign to a new account
+          await reassignChannel(channel);
+          fixedCount++;
+          continue;
+        }
+        
+        if (assignment.account_id.status !== 'active') {
+          logger.warn(`Channel ${channel.channel_id} is assigned to inactive account ${assignment.account_id.phone_number}, reassigning`, {
+            source: 'channel-monitor'
+          });
+          
+          // Reassign to a new account
+          await reassignChannel(channel);
+          fixedCount++;
+          continue;
+        }
+        
+        // Restart listener with existing assignment
+        try {
+          await startListening(channel, assignment.account_id);
+          fixedCount++;
+        } catch (error) {
+          logger.error(`Failed to restart listener for channel ${channel.channel_id}: ${error.message}`, {
+            source: 'channel-monitor',
+            context: { error: error.stack }
+          });
+        }
+      }
+    }
+    
+    logger.info(`Fixed monitoring for ${fixedCount} channels`, {
+      source: 'channel-monitor'
+    });
+    
+    return { fixed_count: fixedCount };
+  } catch (error) {
+    logger.error(`Error fixing channel monitoring: ${error.message}`, {
       source: 'channel-monitor',
       context: { error: error.stack }
     });
@@ -450,5 +638,7 @@ module.exports = {
   reassignChannel,
   initializeChannelMonitoring,
   joinChannel,
-  startListening
+  startListening,
+  getMonitoringStatus,
+  fixChannelMonitoring
 }; 

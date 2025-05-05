@@ -31,6 +31,19 @@ const processNewMessage = async (channelId, message, client) => {
       return null;
     }
     
+    // Check if message already exists - do this before any processing to avoid duplicate logs
+    const existingMessage = await Message.findOne({ 
+      channel_id: channelId, 
+      message_id: message.id 
+    });
+    
+    if (existingMessage) {
+      logger.debug(`Message ${message.id} already exists in channel ${channel.channel_id}, skipping processing`, {
+        source: 'message-listener'
+      });
+      return existingMessage;
+    }
+    
     logger.debug(`Processing new message in channel ${channel.channel_id}`, {
       source: 'message-listener',
       message_id: message.id
@@ -44,7 +57,7 @@ const processNewMessage = async (channelId, message, client) => {
       sender_name: message.sender ? (message.sender.username || message.sender.firstName || 'Unknown') : 'Unknown',
       text: message.text || '',
       raw_data: JSON.stringify(message),
-      created_at: new Date(message.date * 1000), // Convert Unix timestamp to Date
+      date: new Date(message.date * 1000), // Convert Unix timestamp to Date
       is_deleted: false
     };
     
@@ -55,14 +68,22 @@ const processNewMessage = async (channelId, message, client) => {
       // Determine media type
       if (message.media.photo) {
         messageData.media_type = 'photo';
+        messageData.text = messageData.text || '[Photo]'; // Add indicator for non-text content
       } else if (message.media.document) {
         messageData.media_type = 'document';
+        messageData.text = messageData.text || '[Document]'; // Add indicator for non-text content
       } else if (message.media.video) {
         messageData.media_type = 'video';
+        messageData.text = messageData.text || '[Video]'; // Add indicator for non-text content
       } else if (message.media.audio) {
         messageData.media_type = 'audio';
+        messageData.text = messageData.text || '[Audio]'; // Add indicator for non-text content
+      } else if (message.media.gif || message.media.animation) {
+        messageData.media_type = 'animation';
+        messageData.text = messageData.text || '[GIF/Animation]'; // Add indicator for non-text content
       } else {
         messageData.media_type = 'other';
+        messageData.text = messageData.text || '[Media]'; // Add indicator for non-text content
       }
       
       // Try to get media URL if available
@@ -81,15 +102,14 @@ const processNewMessage = async (channelId, message, client) => {
           source: 'message-listener'
         });
       }
+    } else {
+      messageData.media_type = 'none';
     }
     
-    // Save to database - use findOneAndUpdate with upsert to avoid duplicates
-    const savedMessage = await Message.findOneAndUpdate(
-      { channel_id: channelId, message_id: message.id },
-      messageData,
-      { upsert: true, new: true }
-    );
+    // Save to database - use create to avoid double-logging
+    const savedMessage = await Message.create(messageData);
     
+    // Log only once per message
     logger.info(`Saved message ${savedMessage.message_id} from channel ${channel.channel_id}`, {
       source: 'message-listener',
       message_id: savedMessage.message_id
@@ -107,6 +127,14 @@ const processNewMessage = async (channelId, message, client) => {
     
     return savedMessage;
   } catch (error) {
+    // Check if it's a duplicate key error (message already exists)
+    if (error.code === 11000) {
+      logger.debug(`Duplicate message ${message.id} in channel ${channelId} - already saved`, {
+        source: 'message-listener'
+      });
+      return null;
+    }
+    
     logger.error(`Error processing new message in channel ${channelId}: ${error.message}`, {
       source: 'message-listener',
       context: { error: error.stack }

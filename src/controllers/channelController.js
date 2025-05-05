@@ -1,5 +1,5 @@
 const Channel = require('../models/Channel');
-const { addChannel, reassignChannel } = require('../services/telegram/channelMonitor');
+const { addChannel, reassignChannel, getMonitoringStatus, fixChannelMonitoring } = require('../services/telegram/channelMonitor');
 const logger = require('../utils/logger');
 
 /**
@@ -190,10 +190,65 @@ const deleteChannel = async (req, res) => {
   }
 };
 
+/**
+ * Get channel monitoring status
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getChannelMonitoringStatus = async (req, res) => {
+  try {
+    const status = await getMonitoringStatus();
+    
+    res.status(200).json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    logger.error(`API error getting monitoring status: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Fix channel monitoring issues
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const fixChannelMonitoringIssues = async (req, res) => {
+  try {
+    const result = await fixChannelMonitoring();
+    
+    res.status(200).json({
+      success: true,
+      message: `Fixed ${result.fixed_count} channel monitoring issues`,
+      data: result
+    });
+  } catch (error) {
+    logger.error(`API error fixing channel monitoring: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 module.exports = {
   addNewChannel,
   getAllChannels,
   getChannelById,
   updateChannel,
-  deleteChannel
+  deleteChannel,
+  getChannelMonitoringStatus,
+  fixChannelMonitoringIssues
 }; 

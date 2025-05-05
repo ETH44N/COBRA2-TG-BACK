@@ -7,7 +7,9 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "jest",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "check-channels": "node src/scripts/checkChannelListeners.js",
+    "fix-missing-ids": "node src/scripts/fixMissingNumericIds.js"
   },
   "dependencies": {
     "axios": "^1.5.0",
