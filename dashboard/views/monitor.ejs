@@ -1,0 +1,730 @@
+<div class="container-fluid py-4">
+  <!-- Page header -->
+  <div class="row mb-4">
+    <div class="col">
+      <h1 class="page-header">Channel Monitoring Status</h1>
+    </div>
+    <div class="col-auto">
+      <button id="refresh-status" class="btn btn-primary">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Status Overview -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card shadow">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">System Status</h5>
+          <div>
+            <span id="status-indicator" class="badge bg-secondary">Checking...</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-3 text-center mb-3">
+              <div class="display-4" id="total-channels">-</div>
+              <div class="text-muted">Total Channels</div>
+            </div>
+            <div class="col-md-3 text-center mb-3">
+              <div class="display-4" id="active-channels">-</div>
+              <div class="text-muted">Active Channels</div>
+            </div>
+            <div class="col-md-3 text-center mb-3">
+              <div class="display-4" id="monitored-channels">-</div>
+              <div class="text-muted">Monitored Channels</div>
+            </div>
+            <div class="col-md-3 text-center mb-3">
+              <div class="display-4" id="issue-count">-</div>
+              <div class="text-muted">Issues Detected</div>
+            </div>
+          </div>
+          <div class="alert alert-info mt-3 mb-0" id="status-message">
+            <i class="bi bi-info-circle me-2"></i>
+            Loading system status...
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Monitoring Status -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card shadow">
+        <div class="card-header">
+          <h5 class="mb-0">Account Monitoring Status</h5>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped" id="account-status-table">
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Assigned Channels</th>
+                  <th>Active Listeners</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="4" class="text-center">Loading account data...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel Issues -->
+  <div class="row mb-4">
+    <div class="col-md-6 mb-4 mb-md-0">
+      <div class="card shadow h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Channels Missing Listeners</h5>
+          <button class="btn btn-sm btn-success" id="fix-listeners-btn">
+            <i class="bi bi-tools me-1"></i> Fix All
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm" id="missing-listeners-table">
+              <thead>
+                <tr>
+                  <th>Channel Name</th>
+                  <th>Channel ID</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="3" class="text-center">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card shadow h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Channels Missing Numeric IDs</h5>
+          <button class="btn btn-sm btn-success" id="fix-numeric-ids-btn">
+            <i class="bi bi-tools me-1"></i> Fix All
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm" id="missing-ids-table">
+              <thead>
+                <tr>
+                  <th>Channel Name</th>
+                  <th>Channel ID</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="3" class="text-center">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Channel Search -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card shadow">
+        <div class="card-header">
+          <h5 class="mb-0">Check Specific Channel</h5>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <input type="text" class="form-control" id="channel-search" placeholder="Enter channel username, ID, or name to check its monitoring status">
+            </div>
+            <div class="col-md-4">
+              <button class="btn btn-primary w-100" id="check-channel-btn">
+                <i class="bi bi-search me-1"></i> Check Channel
+              </button>
+            </div>
+          </div>
+          <div id="channel-search-results" class="mt-4" style="display: none;">
+            <h6>Search Results:</h6>
+            <div class="card">
+              <div class="card-body" id="channel-details">
+                <!-- Channel details will be displayed here -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Logs -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card shadow">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Recent Channel Monitoring Logs</h5>
+          <button class="btn btn-sm btn-outline-secondary" id="refresh-logs-btn">
+            <i class="bi bi-arrow-repeat me-1"></i> Refresh Logs
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <div class="input-group">
+              <input type="text" class="form-control" id="log-search" placeholder="Filter logs...">
+              <button class="btn btn-outline-secondary" id="clear-log-search">
+                <i class="bi bi-x"></i>
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+            <table class="table table-sm" id="logs-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Level</th>
+                  <th>Source</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="4" class="text-center">Loading logs...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fix Channel Modal -->
+<div class="modal fade" id="fix-channel-modal" tabindex="-1" aria-labelledby="fixChannelModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="fixChannelModalLabel">Fix Channel</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-center" id="fix-channel-spinner">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2">Attempting to fix channel...</p>
+        </div>
+        <div id="fix-channel-result" style="display: none;">
+          <!-- Result will be displayed here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize page
+  loadMonitoringStatus();
+  loadRecentLogs();
+
+  // Refresh buttons
+  document.getElementById('refresh-status').addEventListener('click', loadMonitoringStatus);
+  document.getElementById('refresh-logs-btn').addEventListener('click', loadRecentLogs);
+  
+  // Fix buttons
+  document.getElementById('fix-listeners-btn').addEventListener('click', fixAllChannelListeners);
+  document.getElementById('fix-numeric-ids-btn').addEventListener('click', fixAllNumericIds);
+  
+  // Channel search
+  document.getElementById('check-channel-btn').addEventListener('click', checkSpecificChannel);
+  
+  // Log search
+  const logSearchInput = document.getElementById('log-search');
+  logSearchInput.addEventListener('keyup', filterLogs);
+  document.getElementById('clear-log-search').addEventListener('click', clearLogSearch);
+  
+  // Auto-refresh every 30 seconds
+  setInterval(loadMonitoringStatus, 30000);
+  setInterval(loadRecentLogs, 30000);
+});
+
+// Functions to load data
+function loadMonitoringStatus() {
+  // Update status indicator
+  const statusIndicator = document.getElementById('status-indicator');
+  statusIndicator.className = 'badge bg-warning';
+  statusIndicator.textContent = 'Checking...';
+  
+  fetch('/api/channels/monitoring/status')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Update status indicator
+        statusIndicator.className = 'badge bg-success';
+        statusIndicator.textContent = 'Online';
+        
+        // Update overview stats
+        document.getElementById('total-channels').textContent = data.data.total_channels || 0;
+        document.getElementById('active-channels').textContent = data.data.active_channels || 0;
+        document.getElementById('monitored-channels').textContent = data.data.monitored_channels || 0;
+        
+        const issueCount = 
+          (data.data.channels_without_listeners?.length || 0) + 
+          (data.data.channels_missing_numeric_id?.length || 0);
+        document.getElementById('issue-count').textContent = issueCount;
+        
+        // Update status message
+        let statusMessage = '';
+        if (issueCount > 0) {
+          statusMessage = `<i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i> Found ${issueCount} issues with channel monitoring. Please check the details below.`;
+        } else {
+          statusMessage = `<i class="bi bi-check-circle-fill me-2 text-success"></i> All channels are being monitored correctly.`;
+        }
+        document.getElementById('status-message').innerHTML = statusMessage;
+        
+        // Update account status table
+        updateAccountStatusTable(data.data.account_stats);
+        
+        // Update missing listeners table
+        updateMissingListenersTable(data.data.channels_without_listeners);
+        
+        // Update missing numeric IDs table
+        updateMissingNumericIdsTable(data.data.channels_missing_numeric_id);
+      } else {
+        // Error getting status
+        statusIndicator.className = 'badge bg-danger';
+        statusIndicator.textContent = 'Error';
+        document.getElementById('status-message').innerHTML = `<i class="bi bi-x-circle-fill me-2 text-danger"></i> Failed to get monitoring status: ${data.message || 'Unknown error'}`;
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching monitoring status:', error);
+      statusIndicator.className = 'badge bg-danger';
+      statusIndicator.textContent = 'Offline';
+      document.getElementById('status-message').innerHTML = `<i class="bi bi-x-circle-fill me-2 text-danger"></i> Failed to connect to backend service. The monitoring system may be offline.`;
+    });
+}
+
+function updateAccountStatusTable(accountStats) {
+  const tableBody = document.querySelector('#account-status-table tbody');
+  if (!accountStats || accountStats.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="4" class="text-center">No active accounts found</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  accountStats.forEach(account => {
+    const status = account.assigned_channel_count === account.active_listener_count 
+      ? '<span class="badge bg-success">Healthy</span>' 
+      : '<span class="badge bg-warning">Issues</span>';
+    
+    html += `
+      <tr>
+        <td>${account.phone_number}</td>
+        <td>${account.assigned_channel_count}</td>
+        <td>${account.active_listener_count}</td>
+        <td>${status}</td>
+      </tr>
+    `;
+  });
+  
+  tableBody.innerHTML = html;
+}
+
+function updateMissingListenersTable(channels) {
+  const tableBody = document.querySelector('#missing-listeners-table tbody');
+  if (!channels || channels.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="3" class="text-center">No channels missing listeners</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  channels.forEach(channel => {
+    html += `
+      <tr>
+        <td>${channel.name || 'Unknown'}</td>
+        <td>${channel.channel_id}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary fix-channel-btn" data-id="${channel.id}" data-type="listener">
+            Fix
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+  
+  tableBody.innerHTML = html;
+  
+  // Add event listeners to fix buttons
+  document.querySelectorAll('.fix-channel-btn[data-type="listener"]').forEach(button => {
+    button.addEventListener('click', function() {
+      const channelId = this.getAttribute('data-id');
+      fixChannelListener(channelId);
+    });
+  });
+}
+
+function updateMissingNumericIdsTable(channels) {
+  const tableBody = document.querySelector('#missing-ids-table tbody');
+  if (!channels || channels.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="3" class="text-center">No channels missing numeric IDs</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  channels.forEach(channel => {
+    html += `
+      <tr>
+        <td>${channel.name || 'Unknown'}</td>
+        <td>${channel.channel_id}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary fix-channel-btn" data-id="${channel.id}" data-type="numeric-id">
+            Fix
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+  
+  tableBody.innerHTML = html;
+  
+  // Add event listeners to fix buttons
+  document.querySelectorAll('.fix-channel-btn[data-type="numeric-id"]').forEach(button => {
+    button.addEventListener('click', function() {
+      const channelId = this.getAttribute('data-id');
+      fixChannelNumericId(channelId);
+    });
+  });
+}
+
+function loadRecentLogs() {
+  fetch('/api/logs?source=channel-monitor&limit=100')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        updateLogsTable(data.logs);
+      } else {
+        const tableBody = document.querySelector('#logs-table tbody');
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-center">Failed to load logs: ${data.message || 'Unknown error'}</td></tr>`;
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching logs:', error);
+      const tableBody = document.querySelector('#logs-table tbody');
+      tableBody.innerHTML = '<tr><td colspan="4" class="text-center">Failed to connect to log service</td></tr>';
+    });
+}
+
+function updateLogsTable(logs) {
+  const tableBody = document.querySelector('#logs-table tbody');
+  if (!logs || logs.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="4" class="text-center">No logs found</td></tr>';
+    return;
+  }
+  
+  let html = '';
+  logs.forEach(log => {
+    const levelClass = 
+      log.level === 'error' ? 'bg-danger' :
+      log.level === 'warn' ? 'bg-warning' :
+      log.level === 'info' ? 'bg-info' : 'bg-secondary';
+    
+    const time = new Date(log.timestamp).toLocaleString();
+    
+    html += `
+      <tr class="log-row">
+        <td>${time}</td>
+        <td><span class="badge ${levelClass}">${log.level}</span></td>
+        <td>${log.source || 'unknown'}</td>
+        <td>${log.message}</td>
+      </tr>
+    `;
+  });
+  
+  tableBody.innerHTML = html;
+}
+
+function filterLogs() {
+  const searchTerm = document.getElementById('log-search').value.toLowerCase();
+  const rows = document.querySelectorAll('#logs-table tbody tr.log-row');
+  
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    if (text.includes(searchTerm)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
+
+function clearLogSearch() {
+  document.getElementById('log-search').value = '';
+  filterLogs();
+}
+
+function fixAllChannelListeners() {
+  if (confirm('Are you sure you want to fix all channels missing listeners?')) {
+    fetch('/api/channels/monitoring/fix', { method: 'POST' })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          alert(`Successfully fixed ${data.data.fixed_count} channels.`);
+          loadMonitoringStatus();
+        } else {
+          alert(`Failed to fix channels: ${data.message || 'Unknown error'}`);
+        }
+      })
+      .catch(error => {
+        console.error('Error fixing channel listeners:', error);
+        alert('Failed to connect to backend service.');
+      });
+  }
+}
+
+function fixAllNumericIds() {
+  if (confirm('Are you sure you want to fix all channels missing numeric IDs?')) {
+    document.getElementById('fix-numeric-ids-btn').disabled = true;
+    document.getElementById('fix-numeric-ids-btn').innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Fixing...';
+    
+    fetch('/api/channels/fix-numeric-ids', { method: 'POST' })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          alert(`Successfully fixed ${data.fixed} channels.`);
+        } else {
+          alert(`Failed to fix numeric IDs: ${data.message || 'Unknown error'}`);
+        }
+        document.getElementById('fix-numeric-ids-btn').disabled = false;
+        document.getElementById('fix-numeric-ids-btn').innerHTML = '<i class="bi bi-tools me-1"></i> Fix All';
+        loadMonitoringStatus();
+      })
+      .catch(error => {
+        console.error('Error fixing numeric IDs:', error);
+        alert('Failed to connect to backend service.');
+        document.getElementById('fix-numeric-ids-btn').disabled = false;
+        document.getElementById('fix-numeric-ids-btn').innerHTML = '<i class="bi bi-tools me-1"></i> Fix All';
+      });
+  }
+}
+
+function fixChannelListener(channelId) {
+  const modal = new bootstrap.Modal(document.getElementById('fix-channel-modal'));
+  modal.show();
+  
+  document.getElementById('fix-channel-spinner').style.display = 'block';
+  document.getElementById('fix-channel-result').style.display = 'none';
+  
+  fetch(`/api/channels/${channelId}/fix-listener`, { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+      document.getElementById('fix-channel-spinner').style.display = 'none';
+      document.getElementById('fix-channel-result').style.display = 'block';
+      
+      if (data.success) {
+        document.getElementById('fix-channel-result').innerHTML = `
+          <div class="alert alert-success">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            Successfully fixed channel listener.
+          </div>
+        `;
+        loadMonitoringStatus();
+      } else {
+        document.getElementById('fix-channel-result').innerHTML = `
+          <div class="alert alert-danger">
+            <i class="bi bi-x-circle-fill me-2"></i>
+            Failed to fix channel listener: ${data.message || 'Unknown error'}
+          </div>
+        `;
+      }
+    })
+    .catch(error => {
+      console.error('Error fixing channel listener:', error);
+      document.getElementById('fix-channel-spinner').style.display = 'none';
+      document.getElementById('fix-channel-result').style.display = 'block';
+      document.getElementById('fix-channel-result').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi bi-x-circle-fill me-2"></i>
+          Failed to connect to backend service.
+        </div>
+      `;
+    });
+}
+
+function fixChannelNumericId(channelId) {
+  const modal = new bootstrap.Modal(document.getElementById('fix-channel-modal'));
+  modal.show();
+  
+  document.getElementById('fix-channel-spinner').style.display = 'block';
+  document.getElementById('fix-channel-result').style.display = 'none';
+  
+  fetch(`/api/channels/${channelId}/fix-numeric-id`, { method: 'POST' })
+    .then(response => response.json())
+    .then(data => {
+      document.getElementById('fix-channel-spinner').style.display = 'none';
+      document.getElementById('fix-channel-result').style.display = 'block';
+      
+      if (data.success) {
+        document.getElementById('fix-channel-result').innerHTML = `
+          <div class="alert alert-success">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            Successfully fixed channel numeric ID: ${data.numeric_id}
+          </div>
+        `;
+        loadMonitoringStatus();
+      } else {
+        document.getElementById('fix-channel-result').innerHTML = `
+          <div class="alert alert-danger">
+            <i class="bi bi-x-circle-fill me-2"></i>
+            Failed to fix channel numeric ID: ${data.message || 'Unknown error'}
+          </div>
+        `;
+      }
+    })
+    .catch(error => {
+      console.error('Error fixing channel numeric ID:', error);
+      document.getElementById('fix-channel-spinner').style.display = 'none';
+      document.getElementById('fix-channel-result').style.display = 'block';
+      document.getElementById('fix-channel-result').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi bi-x-circle-fill me-2"></i>
+          Failed to connect to backend service.
+        </div>
+      `;
+    });
+}
+
+function checkSpecificChannel() {
+  const searchTerm = document.getElementById('channel-search').value.trim();
+  if (!searchTerm) {
+    alert('Please enter a channel username, ID, or name to check.');
+    return;
+  }
+  
+  document.getElementById('channel-search-results').style.display = 'none';
+  document.getElementById('check-channel-btn').disabled = true;
+  document.getElementById('check-channel-btn').innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Searching...';
+  
+  fetch(`/api/channels/search?term=${encodeURIComponent(searchTerm)}`)
+    .then(response => response.json())
+    .then(data => {
+      document.getElementById('check-channel-btn').disabled = false;
+      document.getElementById('check-channel-btn').innerHTML = '<i class="bi bi-search me-1"></i> Check Channel';
+      document.getElementById('channel-search-results').style.display = 'block';
+      
+      if (data.success && data.channels && data.channels.length > 0) {
+        displayChannelSearchResults(data.channels);
+      } else {
+        document.getElementById('channel-details').innerHTML = `
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            No channels found matching "${searchTerm}".
+          </div>
+        `;
+      }
+    })
+    .catch(error => {
+      console.error('Error searching for channel:', error);
+      document.getElementById('check-channel-btn').disabled = false;
+      document.getElementById('check-channel-btn').innerHTML = '<i class="bi bi-search me-1"></i> Check Channel';
+      document.getElementById('channel-search-results').style.display = 'block';
+      document.getElementById('channel-details').innerHTML = `
+        <div class="alert alert-danger">
+          <i class="bi bi-x-circle-fill me-2"></i>
+          Failed to connect to backend service.
+        </div>
+      `;
+    });
+}
+
+function displayChannelSearchResults(channels) {
+  let html = '';
+  
+  channels.forEach(channel => {
+    // Create status badge
+    const isActive = channel.is_active ? 
+      '<span class="badge bg-success me-1">Active</span>' : 
+      '<span class="badge bg-warning me-1">Inactive</span>';
+    
+    const hasListener = channel.has_listener ? 
+      '<span class="badge bg-success me-1">Listener Running</span>' : 
+      '<span class="badge bg-danger me-1">No Listener</span>';
+    
+    const hasNumericId = channel.numeric_id ? 
+      '<span class="badge bg-success me-1">Has Numeric ID</span>' : 
+      '<span class="badge bg-danger me-1">Missing Numeric ID</span>';
+    
+    html += `
+      <div class="border rounded p-3 mb-3">
+        <h5>${channel.name || 'Unknown Channel'}</h5>
+        <div class="mb-2">
+          ${isActive}
+          ${hasListener}
+          ${hasNumericId}
+        </div>
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <p><strong>Channel ID:</strong> ${channel.channel_id}</p>
+            <p><strong>Username:</strong> ${channel.username || 'None'}</p>
+            <p><strong>Numeric ID:</strong> ${channel.numeric_id || 'Not available'}</p>
+          </div>
+          <div class="col-md-6">
+            <p><strong>Monitored by Account:</strong> ${channel.account?.phone_number || 'None'}</p>
+            <p><strong>Last Message:</strong> ${channel.last_message_at ? new Date(channel.last_message_at).toLocaleString() : 'Never'}</p>
+            <p><strong>Last Checked:</strong> ${channel.last_checked ? new Date(channel.last_checked).toLocaleString() : 'Never'}</p>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="/channels/${channel._id}" class="btn btn-primary">
+            <i class="bi bi-eye me-1"></i> View Details
+          </a>
+          ${!channel.has_listener ? `
+            <button class="btn btn-warning fix-listener-btn" data-id="${channel._id}">
+              <i class="bi bi-tools me-1"></i> Fix Listener
+            </button>
+          ` : ''}
+          ${!channel.numeric_id ? `
+            <button class="btn btn-warning fix-numeric-id-btn" data-id="${channel._id}">
+              <i class="bi bi-tools me-1"></i> Fix Numeric ID
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  });
+  
+  document.getElementById('channel-details').innerHTML = html;
+  
+  // Add event listeners to fix buttons
+  document.querySelectorAll('.fix-listener-btn').forEach(button => {
+    button.addEventListener('click', function() {
+      const channelId = this.getAttribute('data-id');
+      fixChannelListener(channelId);
+    });
+  });
+  
+  document.querySelectorAll('.fix-numeric-id-btn').forEach(button => {
+    button.addEventListener('click', function() {
+      const channelId = this.getAttribute('data-id');
+      fixChannelNumericId(channelId);
+    });
+  });
+}
+</script> 

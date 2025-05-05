@@ -16,6 +16,7 @@ const channelRoutes = require('./routes/channelRoutes');
 const accountRoutes = require('./routes/accountRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const logRoutes = require('./routes/logRoutes');
 
 // Initialize Express app
 const app = express();
@@ -31,6 +32,7 @@ app.use('/api/channels', channelRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/logs', logRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

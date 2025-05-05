@@ -881,6 +881,31 @@ app.get('/diagnostics', async (req, res) => {
   }
 });
 
+// Channel Monitoring Status page
+app.get('/monitor', async (req, res) => {
+  try {
+    const systemInfo = {
+      uptime: Math.floor(process.uptime()),
+      nodeVersion: process.version,
+      timestamp: new Date()
+    };
+    
+    res.render('monitor', {
+      title: 'Channel Monitoring Status',
+      active: 'monitor',
+      systemInfo
+    });
+  } catch (error) {
+    console.error('Error loading monitoring page:', error);
+    res.render('error', {
+      message: 'Failed to load monitoring page',
+      error: error,
+      title: 'Error',
+      active: ''
+    });
+  }
+});
+
 // Add diagnostic endpoint to check message collection
 app.get('/api/diagnostic/messages', async (req, res) => {
   try {

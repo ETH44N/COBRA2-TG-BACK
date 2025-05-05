@@ -1,6 +1,7 @@
 const Channel = require('../models/Channel');
 const { addChannel, reassignChannel, getMonitoringStatus, fixChannelMonitoring } = require('../services/telegram/channelMonitor');
 const logger = require('../utils/logger');
+const AccountChannelAssignment = require('../models/AccountChannelAssignment');
 
 /**
  * Add a new channel to monitor
@@ -243,6 +244,231 @@ const fixChannelMonitoringIssues = async (req, res) => {
   }
 };
 
+/**
+ * Search for channels by name, username, or ID
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const searchChannels = async (req, res) => {
+  try {
+    const { term } = req.query;
+    
+    if (!term) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search term is required'
+      });
+    }
+    
+    // Search for channels by various fields
+    const channels = await Channel.find({
+      $or: [
+        { name: { $regex: term, $options: 'i' } },
+        { username: { $regex: term, $options: 'i' } },
+        { channel_id: { $regex: term, $options: 'i' } },
+        { numeric_id: { $regex: term, $options: 'i' } }
+      ]
+    }).lean();
+    
+    // Get monitoring status to determine which channels have active listeners
+    const monitoringStatus = await getMonitoringStatus();
+    const activeListeners = new Set();
+    
+    // Create a set of channel IDs with active listeners
+    if (monitoringStatus.monitored_channels > 0) {
+      monitoringStatus.channels_without_listeners.forEach(channel => {
+        activeListeners.add(channel.id.toString());
+      });
+    }
+    
+    // Get account assignments for these channels
+    const channelIds = channels.map(channel => channel._id);
+    const assignments = await AccountChannelAssignment.find({
+      channel_id: { $in: channelIds },
+      status: 'active'
+    }).populate('account_id').lean();
+    
+    // Create a map of channel ID to account
+    const channelAccountMap = {};
+    assignments.forEach(assignment => {
+      channelAccountMap[assignment.channel_id.toString()] = assignment.account_id;
+    });
+    
+    // Enrich channel data with listener status and account information
+    const enrichedChannels = channels.map(channel => {
+      const channelId = channel._id.toString();
+      return {
+        ...channel,
+        has_listener: !activeListeners.has(channelId),
+        account: channelAccountMap[channelId] || null
+      };
+    });
+    
+    res.status(200).json({
+      success: true,
+      count: enrichedChannels.length,
+      channels: enrichedChannels
+    });
+  } catch (error) {
+    logger.error(`API error searching channels: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Fix channel listener
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const fixChannelListener = async (req, res) => {
+  try {
+    const channelId = req.params.id;
+    
+    // Get channel
+    const channel = await Channel.findById(channelId);
+    
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: 'Channel not found'
+      });
+    }
+    
+    // Attempt to reassign the channel to fix the listener
+    const result = await reassignChannel(channel);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Channel listener fixed',
+      data: result
+    });
+  } catch (error) {
+    logger.error(`API error fixing channel listener: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Fix channel numeric ID
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const fixChannelNumericId = async (req, res) => {
+  try {
+    const channelId = req.params.id;
+    
+    // Get channel
+    const channel = await Channel.findById(channelId);
+    
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: 'Channel not found'
+      });
+    }
+    
+    // Get assignment
+    const assignment = await AccountChannelAssignment.findOne({
+      channel_id: channelId,
+      status: 'active'
+    }).populate('account_id');
+    
+    if (!assignment) {
+      return res.status(400).json({
+        success: false,
+        message: 'No active account assignment found for this channel'
+      });
+    }
+    
+    // Get client for account
+    const { getClient } = require('../services/telegram/client');
+    const client = await getClient(assignment.account_id);
+    
+    // Get entity for channel
+    const entity = await client.getEntity(channel.channel_id);
+    
+    // Extract numeric ID
+    const numericId = entity.id?.toString();
+    
+    if (!numericId) {
+      return res.status(500).json({
+        success: false,
+        message: 'Could not get numeric ID for channel'
+      });
+    }
+    
+    // Update channel
+    await Channel.updateOne(
+      { _id: channel._id },
+      { 
+        numeric_id: numericId,
+        name: entity.title || channel.name,
+        username: entity.username || null
+      }
+    );
+    
+    res.status(200).json({
+      success: true,
+      message: 'Channel numeric ID fixed',
+      numeric_id: numericId
+    });
+  } catch (error) {
+    logger.error(`API error fixing channel numeric ID: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+/**
+ * Fix all channels with missing numeric IDs
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const fixAllNumericIds = async (req, res) => {
+  try {
+    // Run the script from a module
+    const fixMissingNumericIds = require('../scripts/fixMissingNumericIds');
+    const result = await fixMissingNumericIds();
+    
+    res.status(200).json({
+      success: true,
+      message: `Fixed ${result.fixed} channels with missing numeric IDs`,
+      fixed: result.fixed,
+      failed: result.failed
+    });
+  } catch (error) {
+    logger.error(`API error fixing all numeric IDs: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 module.exports = {
   addNewChannel,
   getAllChannels,
@@ -250,5 +476,9 @@ module.exports = {
   updateChannel,
   deleteChannel,
   getChannelMonitoringStatus,
-  fixChannelMonitoringIssues
+  fixChannelMonitoringIssues,
+  searchChannels,
+  fixChannelListener,
+  fixChannelNumericId,
+  fixAllNumericIds
 }; 

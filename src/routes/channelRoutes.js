@@ -4,7 +4,11 @@ const {
   getAllChannels, 
   getChannelById,
   getChannelMonitoringStatus,
-  fixChannelMonitoringIssues
+  fixChannelMonitoringIssues,
+  searchChannels,
+  fixChannelListener,
+  fixChannelNumericId,
+  fixAllNumericIds
 } = require('../controllers/channelController');
 const { validate, schemas } = require('../utils/validators');
 
@@ -22,6 +26,18 @@ router.get('/monitoring/status', getChannelMonitoringStatus);
 
 // Fix channel monitoring issues
 router.post('/monitoring/fix', fixChannelMonitoringIssues);
+
+// Search channels
+router.get('/search', searchChannels);
+
+// Fix all missing numeric IDs
+router.post('/fix-numeric-ids', fixAllNumericIds);
+
+// Fix channel listener for specific channel
+router.post('/:id/fix-listener', fixChannelListener);
+
+// Fix numeric ID for specific channel
+router.post('/:id/fix-numeric-id', fixChannelNumericId);
 
 // Get a specific channel
 router.get('/:id', getChannelById);
