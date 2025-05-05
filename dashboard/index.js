@@ -88,9 +88,6 @@ const channelSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  numeric_id: {  // Add this field
-    type: String
-  },
   name: String,
   username: String,
   joined_by_account_id: {

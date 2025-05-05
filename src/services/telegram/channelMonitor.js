@@ -11,6 +11,63 @@ const { getBestAccountForNewChannel } = require('./accountManager');
 // Store active channel listeners
 const activeListeners = new Map();
 
+// Add a cache for channel entities to avoid resolving usernames repeatedly
+const channelEntityCache = new Map();
+
+/**
+ * Get a channel entity, using cache if available
+ * @param {string} channelId - Channel ID or username
+ * @param {Object} client - Telegram client
+ * @returns {Promise<Object>} - Channel entity
+ */
+const getChannelEntity = async (channelId, client) => {
+  // Check if we have a numeric ID in the input
+  const isNumeric = /^\d+$/.test(channelId);
+  
+  // If numeric, we can use it directly and cache the result
+  if (isNumeric) {
+    if (!channelEntityCache.has(channelId)) {
+      try {
+        const entity = await client.getEntity(BigInt(channelId));
+        channelEntityCache.set(channelId, entity);
+        logger.debug(`Cached entity for numeric channel ID: ${channelId}`, {
+          source: 'channel-monitor'
+        });
+      } catch (error) {
+        logger.error(`Error getting entity for numeric channel ID ${channelId}: ${error.message}`, {
+          source: 'channel-monitor',
+          context: { error: error.stack }
+        });
+        throw error;
+      }
+    }
+    return channelEntityCache.get(channelId);
+  }
+  
+  // For non-numeric IDs (usernames, etc.), we need to resolve and then cache
+  if (!channelEntityCache.has(channelId)) {
+    try {
+      const entity = await client.getEntity(channelId);
+      // Cache with both the original ID and the numeric ID
+      channelEntityCache.set(channelId, entity);
+      if (entity.id) {
+        channelEntityCache.set(entity.id.toString(), entity);
+      }
+      logger.debug(`Cached entity for channel: ${channelId}`, {
+        source: 'channel-monitor'
+      });
+    } catch (error) {
+      logger.error(`Error getting entity for channel ${channelId}: ${error.message}`, {
+        source: 'channel-monitor',
+        context: { error: error.stack }
+      });
+      throw error;
+    }
+  }
+  
+  return channelEntityCache.get(channelId);
+};
+
 /**
  * Initialize channel monitoring
  * Only starts monitoring channels that have been assigned to accounts
@@ -251,15 +308,19 @@ const joinChannel = async (channel, account) => {
     // Get client for account
     const client = await getClient(account);
     
-    // Join channel
-    const entity = await client.getEntity(channel.channel_id);
+    // Use the cached getEntity function to avoid rate limits
+    const entity = await getChannelEntity(channel.channel_id, client);
+    
+    // Get the numeric ID - this is critical to avoid future resolveUsername calls
+    const numericId = entity.id?.toString();
     
     // Update channel details
     const updates = {
       is_active: true,
       name: entity.title || channel.name || channel.channel_id,
       username: entity.username || null,
-      date_joined: new Date()
+      date_joined: new Date(),
+      numeric_id: numericId // Store the numeric ID to avoid future resolutions
     };
     
     // Add description and member count if available
@@ -273,12 +334,27 @@ const joinChannel = async (channel, account) => {
       { new: true }
     );
     
-    logger.info(`Joined channel ${channel.channel_id} with account ${account.phone_number}`, {
+    logger.info(`Joined channel ${channel.channel_id} with account ${account.phone_number}, numeric_id: ${numericId}`, {
       source: 'channel-monitor'
     });
     
     return updatedChannel;
   } catch (error) {
+    // Check if it's a FloodWait error
+    if (error.message.includes('A wait of') && error.message.includes('required')) {
+      const waitTimeMatch = error.message.match(/A wait of (\d+) seconds is required/);
+      const waitTime = waitTimeMatch ? waitTimeMatch[1] : 'unknown';
+      
+      logger.warn(`FloodWait error when joining channel ${channel.channel_id}: Need to wait ${waitTime} seconds`, {
+        source: 'channel-monitor',
+        context: { 
+          channel_id: channel.channel_id,
+          account: account.phone_number,
+          waitTime
+        }
+      });
+    }
+    
     logger.error(`Error joining channel ${channel.channel_id}: ${error.message}`, {
       source: 'channel-monitor',
       context: { error: error.stack }

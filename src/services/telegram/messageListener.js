@@ -208,11 +208,18 @@ const fetchMessageHistory = async (channel, account, client, limit = 100) => {
       source: 'message-listener'
     });
     
-    // Get the channel entity
-    const entity = await client.getEntity(channel.channel_id);
+    if (!channel.numeric_id) {
+      logger.warn(`Channel ${channel.channel_id} has no numeric_id, cannot fetch history without resolving username`, {
+        source: 'message-listener'
+      });
+      throw new Error(`Channel ${channel.channel_id} missing numeric_id`);
+    }
     
-    // Get message history
-    const messages = await client.getMessages(entity, {
+    // Use the stored numeric ID instead of resolving the username again
+    const channelId = BigInt(channel.numeric_id);
+    
+    // Get message history using the numeric ID
+    const messages = await client.getMessages(channelId, {
       limit: limit
     });
     
@@ -252,6 +259,21 @@ const fetchMessageHistory = async (channel, account, client, limit = 100) => {
       count: processedCount
     };
   } catch (error) {
+    // Check for flood wait errors and log them specially
+    if (error.message.includes('A wait of') && error.message.includes('required')) {
+      const waitTimeMatch = error.message.match(/A wait of (\d+) seconds is required/);
+      const waitTime = waitTimeMatch ? waitTimeMatch[1] : 'unknown';
+      
+      logger.warn(`FloodWait error when fetching messages for ${channel.channel_id}: Need to wait ${waitTime} seconds`, {
+        source: 'message-listener',
+        context: { 
+          channel_id: channel.channel_id,
+          account: account.phone_number,
+          waitTime
+        }
+      });
+    }
+    
     logger.error(`Error fetching message history for channel ${channel.channel_id}: ${error.message}`, {
       source: 'message-listener',
       context: { error: error.stack }
