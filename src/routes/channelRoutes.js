@@ -8,7 +8,8 @@ const {
   searchChannels,
   fixChannelListener,
   fixChannelNumericId,
-  fixAllNumericIds
+  fixAllNumericIds,
+  checkChannelMonitoring
 } = require('../controllers/channelController');
 const { validate, schemas } = require('../utils/validators');
 
@@ -41,5 +42,12 @@ router.post('/:id/fix-numeric-id', fixChannelNumericId);
 
 // Get a specific channel
 router.get('/:id', getChannelById);
+
+/**
+ * @route GET /api/channels/status/:channelId
+ * @desc Check monitoring status of a specific channel
+ * @access Private
+ */
+router.get('/status/:channelId', checkChannelMonitoring);
 
 module.exports = router; 

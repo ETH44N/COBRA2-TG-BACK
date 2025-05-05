@@ -2,6 +2,7 @@ const Channel = require('../models/Channel');
 const { addChannel, reassignChannel, getMonitoringStatus, fixChannelMonitoring } = require('../services/telegram/channelMonitor');
 const logger = require('../utils/logger');
 const AccountChannelAssignment = require('../models/AccountChannelAssignment');
+const Message = require('../models/Message');
 
 /**
  * Add a new channel to monitor
@@ -469,6 +470,104 @@ const fixAllNumericIds = async (req, res) => {
   }
 };
 
+/**
+ * Check if a specific channel is being properly monitored
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const checkChannelMonitoring = async (req, res) => {
+  try {
+    const { channelId } = req.params;
+    
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Channel ID is required'
+      });
+    }
+    
+    // Find channel in database
+    const channel = await Channel.findOne({
+      $or: [
+        { channel_id: channelId },
+        { username: channelId },
+        { numeric_id: channelId }
+      ]
+    });
+    
+    if (!channel) {
+      return res.status(404).json({
+        success: false,
+        message: `Channel ${channelId} not found in database`
+      });
+    }
+    
+    // Get assignment
+    const assignment = await AccountChannelAssignment.findOne({
+      channel_id: channel._id
+    }).populate('account_id');
+    
+    // Check if listener is active
+    const activeListeners = require('../services/telegram/channelMonitor').activeListeners;
+    const hasActiveListener = activeListeners && activeListeners.has(channel._id.toString());
+    
+    // Get message stats
+    const totalMessages = await Message.countDocuments({ channel_id: channel._id });
+    const lastMessage = await Message.findOne({ channel_id: channel._id })
+      .sort({ date: -1 })
+      .select('date message_id')
+      .lean();
+    
+    // Calculate time since last message
+    let timeSinceLastMessage = null;
+    if (lastMessage) {
+      timeSinceLastMessage = Date.now() - new Date(lastMessage.date).getTime();
+      timeSinceLastMessage = Math.floor(timeSinceLastMessage / (1000 * 60)); // Convert to minutes
+    }
+    
+    const status = {
+      channel_info: {
+        id: channel._id,
+        channel_id: channel.channel_id,
+        name: channel.name,
+        username: channel.username,
+        numeric_id: channel.numeric_id,
+        is_active: channel.is_active,
+        last_checked: channel.last_checked,
+        date_joined: channel.date_joined
+      },
+      monitoring_status: {
+        has_active_listener: hasActiveListener,
+        assigned_to_account: assignment ? assignment.account_id.phone_number : null,
+        account_status: assignment ? assignment.account_id.status : null
+      },
+      message_stats: {
+        total_messages: totalMessages,
+        last_message_at: lastMessage ? lastMessage.date : null,
+        minutes_since_last_message: timeSinceLastMessage,
+        last_message_id: lastMessage ? lastMessage.message_id : null
+      },
+      last_error: channel.last_error,
+      last_error_at: channel.last_error_at
+    };
+    
+    return res.status(200).json({
+      success: true,
+      status
+    });
+  } catch (error) {
+    logger.error(`Error checking channel monitoring: ${error.message}`, {
+      source: 'channel-controller',
+      context: { error: error.stack }
+    });
+    
+    return res.status(500).json({
+      success: false,
+      message: `Error checking channel monitoring: ${error.message}`
+    });
+  }
+};
+
 module.exports = {
   addNewChannel,
   getAllChannels,
@@ -480,5 +579,6 @@ module.exports = {
   searchChannels,
   fixChannelListener,
   fixChannelNumericId,
-  fixAllNumericIds
+  fixAllNumericIds,
+  checkChannelMonitoring
 }; 

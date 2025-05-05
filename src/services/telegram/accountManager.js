@@ -3,6 +3,7 @@ const AccountChannelAssignment = require('../../models/AccountChannelAssignment'
 const { getClient, disconnectClient } = require('./client');
 const logger = require('../../utils/logger');
 const config = require('../../config/telegram');
+const Channel = require('../../models/Channel');
 
 /**
  * Initialize Telegram accounts
@@ -199,10 +200,60 @@ const checkAccountsHealth = async () => {
       source: 'account-manager'
     });
     
+    // Track reconnection attempts
+    let reconnectedCount = 0;
+    
     for (const account of accounts) {
       try {
         // Test connection
-        await getClient(account);
+        const client = await getClient(account);
+        
+        // Verify connection is active
+        if (!client.connected) {
+          logger.warn(`Account ${account.phone_number} has client but is not actually connected. Attempting to reconnect...`, {
+            source: 'account-manager'
+          });
+          
+          // Force disconnect and reconnect
+          await disconnectClient(account._id.toString());
+          
+          // Retry connection
+          await getClient(account);
+          
+          reconnectedCount++;
+          
+          // Check channels assigned to this account
+          const accountAssignments = assignments.filter(a => 
+            a.account_id._id.toString() === account._id.toString()
+          );
+          
+          logger.info(`Restarting ${accountAssignments.length} channel listeners for reconnected account ${account.phone_number}`, {
+            source: 'account-manager'
+          });
+          
+          // Restart listeners for each channel
+          for (const assignment of accountAssignments) {
+            try {
+              // Get channel
+              const channel = await Channel.findById(assignment.channel_id);
+              
+              if (channel) {
+                // Import here to avoid circular dependency
+                const { startListening } = require('./channelMonitor');
+                await startListening(channel, account);
+                
+                logger.info(`Restarted listener for channel ${channel.channel_id}`, {
+                  source: 'account-manager'
+                });
+              }
+            } catch (listenerError) {
+              logger.error(`Failed to restart listener for channel: ${listenerError.message}`, {
+                source: 'account-manager',
+                context: { error: listenerError.stack }
+              });
+            }
+          }
+        }
         
         // Update account status
         await Account.findByIdAndUpdate(account._id, {
@@ -230,6 +281,10 @@ const checkAccountsHealth = async () => {
         await disconnectClient(account._id.toString());
       }
     }
+    
+    logger.info(`Account health check completed. Reconnected ${reconnectedCount} accounts.`, {
+      source: 'account-manager'
+    });
   } catch (error) {
     logger.error(`Error checking accounts health: ${error.message}`, {
       source: 'account-manager',

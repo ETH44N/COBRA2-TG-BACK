@@ -81,14 +81,23 @@ const initializeApp = async () => {
       await retryFailedWebhooks();
     });
     
-    // Check account health every 6 hours
-    cron.schedule('0 */6 * * *', async () => {
+    // Check account health every hour instead of 6 hours
+    cron.schedule('0 * * * *', async () => {
       logger.info('Running scheduled job: Check accounts health', {
         source: 'scheduler'
       });
       await checkAccountsHealth();
     });
     
+    // Fix channel monitoring every 2 hours
+    cron.schedule('0 */2 * * *', async () => {
+      logger.info('Running scheduled job: Fix channel monitoring', {
+        source: 'scheduler'
+      });
+      const { fixChannelMonitoring } = require('./services/telegram/channelMonitor');
+      await fixChannelMonitoring();
+    });
+
     // Start server
     const PORT = appConfig.port;
     app.listen(PORT, () => {

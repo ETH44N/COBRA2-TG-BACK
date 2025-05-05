@@ -9,6 +9,33 @@ const API_HASH = "8627549376532003f12e386841814511";
 // Store active clients
 const activeClients = new Map();
 
+// Connection attempt tracking to avoid excessive reconnection attempts
+const connectionAttempts = new Map();
+const MAX_CONNECTION_ATTEMPTS = 3;
+const CONNECTION_ATTEMPT_RESET_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Verify a client is actually connected by sending a ping
+ * @param {TelegramClient} client - Telegram client to check
+ * @returns {Promise<boolean>} - Whether client is connected
+ */
+const verifyClientConnection = async (client) => {
+  try {
+    if (!client.connected) {
+      return false;
+    }
+    
+    // Try to ping the server
+    await client.invoke({ className: 'Ping', pingId: BigInt(Math.floor(Math.random() * 1000000000)) });
+    return true;
+  } catch (error) {
+    logger.warn(`Ping check failed: ${error.message}`, {
+      source: 'telegram-client'
+    });
+    return false;
+  }
+};
+
 /**
  * Get or create a Telegram client for an account
  * @param {Object} account - Account document from database
@@ -16,12 +43,41 @@ const activeClients = new Map();
  */
 const getClient = async (account) => {
   try {
+    const accountId = account._id.toString();
+    
+    // Check if we've been trying to connect too many times
+    if (connectionAttempts.has(accountId)) {
+      const attempts = connectionAttempts.get(accountId);
+      if (attempts.count >= MAX_CONNECTION_ATTEMPTS) {
+        const timeSinceLastAttempt = Date.now() - attempts.lastAttempt;
+        
+        if (timeSinceLastAttempt < CONNECTION_ATTEMPT_RESET_MS) {
+          throw new Error(`Too many connection attempts for account ${account.phone_number}, try again later`);
+        } else {
+          // Reset attempts after the cooldown period
+          connectionAttempts.set(accountId, { count: 1, lastAttempt: Date.now() });
+        }
+      } else {
+        // Increment attempt count
+        connectionAttempts.set(accountId, { 
+          count: attempts.count + 1, 
+          lastAttempt: Date.now() 
+        });
+      }
+    } else {
+      // First attempt
+      connectionAttempts.set(accountId, { count: 1, lastAttempt: Date.now() });
+    }
+    
     // Check if client already exists and is connected
-    if (activeClients.has(account._id.toString())) {
-      const existingClient = activeClients.get(account._id.toString());
+    if (activeClients.has(accountId)) {
+      const existingClient = activeClients.get(accountId);
+      
+      // Verify connection with ping
+      const isConnected = await verifyClientConnection(existingClient);
       
       // Check if client is connected
-      if (existingClient.connected) {
+      if (isConnected) {
         logger.debug(`Using existing client for account ${account.phone_number}`, {
           source: 'telegram-client'
         });
@@ -30,8 +86,26 @@ const getClient = async (account) => {
       
       // If client exists but is disconnected, try to reconnect
       try {
+        logger.info(`Reconnecting client for account ${account.phone_number}`, {
+          source: 'telegram-client'
+        });
+        
         await existingClient.connect();
-        return existingClient;
+        
+        // Verify connection after reconnect
+        const reconnectSuccess = await verifyClientConnection(existingClient);
+        
+        if (reconnectSuccess) {
+          logger.info(`Successfully reconnected client for account ${account.phone_number}`, {
+            source: 'telegram-client'
+          });
+          return existingClient;
+        } else {
+          logger.warn(`Reconnection failed for account ${account.phone_number}, creating new client`, {
+            source: 'telegram-client'
+          });
+          // Continue to create a new client
+        }
       } catch (error) {
         logger.error(`Failed to reconnect client for account ${account.phone_number}: ${error.message}`, {
           source: 'telegram-client',
@@ -69,7 +143,10 @@ const getClient = async (account) => {
     }
     
     // Store client in active clients map
-    activeClients.set(account._id.toString(), client);
+    activeClients.set(accountId, client);
+    
+    // Reset connection attempt counter on success
+    connectionAttempts.set(accountId, { count: 0, lastAttempt: Date.now() });
     
     return client;
   } catch (error) {
